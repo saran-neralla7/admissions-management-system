@@ -237,7 +237,7 @@ export default function CreateStudentPage() {
                     type="text"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    placeholder="e.g. Saran Neralla"
+                    placeholder="e.g. Student Full Name"
                     className="w-full px-3 py-2 border rounded-lg text-xs bg-white"
                     required
                   />
