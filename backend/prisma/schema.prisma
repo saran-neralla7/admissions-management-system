@@ -1,0 +1,193 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id                 String       @id @default(uuid())
+  email              String       @unique
+  passwordHash       String
+  mustChangePassword Boolean      @default(true)
+  isActive           Boolean      @default(true)
+  roleId             String
+  role               Role         @relation(fields: [roleId], references: [id])
+  userSchools        UserSchool[]
+  student            Student?
+  auditLogs          AuditLog[]
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  permissions String   // JSON stringified permission array
+  users       User[]
+}
+
+model School {
+  id          String       @id @default(uuid())
+  name        String
+  code        String       @unique
+  programs    Program[]
+  userSchools UserSchool[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model UserSchool {
+  id       String @id @default(uuid())
+  userId   String
+  schoolId String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, schoolId])
+}
+
+model Program {
+  id              String           @id @default(uuid())
+  name            String
+  code            String
+  studentIdPrefix String
+  applicationFee  Float            @default(1000.00)
+  schoolId        String
+  school          School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  admissionCycles AdmissionCycle[]
+  students        Student[]
+  formFields      FormField[]
+  docRequirements String?          // JSON stringified array of required documents
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@unique([schoolId, code])
+}
+
+model AdmissionCycle {
+  id           String        @id @default(uuid())
+  academicYear Int
+  title        String
+  programId    String
+  program      Program       @relation(fields: [programId], references: [id], onDelete: Cascade)
+  isActive     Boolean       @default(true)
+  applications Application[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model Student {
+  id               String        @id @default(uuid())
+  studentId        String        @unique
+  encryptedAadhaar String
+  aadhaarLast4     String
+  fullName         String
+  dateOfBirth      DateTime
+  userId           String        @unique
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  programId        String
+  program          Program       @relation(fields: [programId], references: [id])
+  applications     Application[]
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+}
+
+model FormField {
+  id           String   @id @default(uuid())
+  programId    String
+  program      Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
+  sectionName  String
+  fieldKey     String
+  fieldLabel   String
+  fieldType    String
+  options      String?  // JSON stringified array of options
+  validation   String   // JSON stringified validation object
+  conditional  String?  // JSON stringified conditional object
+  displayOrder Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([programId, fieldKey])
+}
+
+model Application {
+  id               String            @id @default(uuid())
+  applicationNo    String            @unique
+  studentId        String
+  student          Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  admissionCycleId String
+  admissionCycle   AdmissionCycle    @relation(fields: [admissionCycleId], references: [id])
+  status           String            @default("ADMISSION_CREATED")
+  customFormData   String            @default("{}") // JSON stringified object
+  documents        StudentDocument[]
+  feeRecords       FeeRecord[]
+  history          StatusHistory[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+}
+
+model StudentDocument {
+  id            String            @id @default(uuid())
+  applicationId String
+  application   Application       @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  documentType  String
+  filePath      String
+  isVerified    Boolean           @default(false)
+  status        String            @default("PENDING_VERIFICATION") // PENDING_VERIFICATION, VERIFIED, REJECTED_REUPLOAD_REQUIRED
+  remarks       String?
+  versions      DocumentVersion[]
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+}
+
+model DocumentVersion {
+  id                String          @id @default(uuid())
+  studentDocumentId String
+  studentDocument   StudentDocument @relation(fields: [studentDocumentId], references: [id], onDelete: Cascade)
+  versionNumber     Int
+  filePath          String
+  uploadedAt        DateTime        @default(now())
+}
+
+model FeeRecord {
+  id               String      @id @default(uuid())
+  applicationId    String
+  application      Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  amountPaid       Float
+  transactionRefNo String
+  receiptFilePath  String
+  status           String      @default("PENDING") // PENDING, VERIFIED, REJECTED_REUPLOAD_REQUIRED
+  remarks          String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+}
+
+model StatusHistory {
+  id            String      @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  fromStatus    String
+  toStatus      String
+  changedBy     String
+  remarks       String?
+  createdAt     DateTime    @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  roleName  String
+  action    String
+  module    String
+  ipAddress String
+  details   String   // JSON stringified details object
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([action])
+  @@index([userId])
+}
