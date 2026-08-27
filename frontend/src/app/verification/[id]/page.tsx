@@ -92,7 +92,7 @@ export default function VerificationStudentDetailPage() {
       setModalState({
         isOpen: true,
         title: "Remarks Required",
-        message: "Please enter specific remarks for why this certificate scan needs to be re-uploaded.",
+        message: "Please enter specific remarks explaining why this certificate scan needs to be re-uploaded.",
         type: "warning",
       });
       return;
@@ -108,11 +108,11 @@ export default function VerificationStudentDetailPage() {
       if (res.success) {
         setModalState({
           isOpen: true,
-          title: targetStatus === "VERIFIED" ? "Certificate Verified" : "Re-upload Requested & Email Dispatched",
+          title: targetStatus === "VERIFIED" ? "Certificate Verified" : "Certificate Flagged for Re-upload",
           message:
             targetStatus === "VERIFIED"
               ? "Certificate scan approved."
-              : `Re-upload requested for certificate. Automated email notification dispatched to student.`,
+              : "Certificate flagged for re-upload. You can review remaining certificates and click 'Send Consolidated Re-upload Email' when done.",
           type: "success",
         });
         loadUserAndStudent();
@@ -122,6 +122,35 @@ export default function VerificationStudentDetailPage() {
         isOpen: true,
         title: "Update Failed",
         message: err.message || "Failed to update document status.",
+        type: "danger",
+      });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleSendConsolidatedEmail = async () => {
+    if (!student?.applicationId) return;
+    setActionLoading(true);
+    try {
+      const res = await fetchApi(`/applications/${student.applicationId}/send-reupload-request`, {
+        method: "POST",
+      });
+
+      if (res.success) {
+        setModalState({
+          isOpen: true,
+          title: "Consolidated Re-upload Email Dispatched! 📧",
+          message: res.message || "Consolidated email listing all flagged re-upload items sent to student.",
+          type: "success",
+        });
+        loadUserAndStudent();
+      }
+    } catch (err: any) {
+      setModalState({
+        isOpen: true,
+        title: "Email Dispatch Error",
+        message: err.message || "Failed to send consolidated re-upload email.",
         type: "danger",
       });
     } finally {
@@ -168,6 +197,9 @@ export default function VerificationStudentDetailPage() {
   if (filterProgramId) backQueryParams.append("programId", filterProgramId);
   const backUrl = `/verification${backQueryParams.toString() ? `?${backQueryParams.toString()}` : ""}`;
 
+  const flaggedDocs = student?.documents?.filter((d: any) => d.status === "REJECTED_REUPLOAD_REQUIRED") || [];
+  const flaggedDocsCount = flaggedDocs.length;
+
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
       <Header userEmail={userEmail} userRole={userRole} />
@@ -206,6 +238,30 @@ export default function VerificationStudentDetailPage() {
                   <ERPStatusChip status={student.applicationStatus} />
                 </div>
               </div>
+
+              {/* Consolidated Email Banner Notice */}
+              {flaggedDocsCount > 0 && (
+                <div className="p-5 bg-amber-50 border border-amber-300 rounded-2xl shadow-xs space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wider flex items-center gap-2">
+                        <span>⚠️</span> {flaggedDocsCount} Certificate(s) Flagged for Re-upload
+                      </h4>
+                      <p className="text-xs text-amber-800 mt-1">
+                        You have flagged {flaggedDocsCount} certificate scan(s) needing re-upload. When you finish reviewing all certificates, click the button to send a <strong>single consolidated email</strong> to {student.email}.
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleSendConsolidatedEmail}
+                      disabled={actionLoading}
+                      className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md transition-colors whitespace-nowrap inline-flex items-center gap-2"
+                    >
+                      <span>📧</span>
+                      <span>Send Consolidated Re-upload Email ({flaggedDocsCount} Items)</span>
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Personal & Aadhaar Info Card */}
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
@@ -302,7 +358,7 @@ export default function VerificationStudentDetailPage() {
                                       : "bg-amber-50 text-amber-900 border-amber-300"
                                   }`}
                                 >
-                                  {isVerified ? "✅ Verified" : isReuploadReq ? "⚠️ Re-upload Requested" : "⏳ Pending Audit"}
+                                  {isVerified ? "✅ Verified" : isReuploadReq ? "⚠️ Flagged for Re-upload" : "⏳ Pending Audit"}
                                 </span>
                               </div>
                               {activeFilePath && (
@@ -335,8 +391,8 @@ export default function VerificationStudentDetailPage() {
                           <div className="flex flex-col sm:flex-row items-center gap-3 pt-1">
                             <input
                               type="text"
-                              placeholder="Enter specific remarks if requesting re-upload (e.g. Scan is blurry)..."
-                              value={reuploadRemarksMap[doc.id] || ""}
+                              placeholder="Enter specific remarks for re-upload (e.g. Scan is blurry)..."
+                              value={reuploadRemarksMap[doc.id] !== undefined ? reuploadRemarksMap[doc.id] : (doc.remarks || "")}
                               onChange={(e) =>
                                 setReuploadRemarksMap((prev) => ({ ...prev, [doc.id]: e.target.value }))
                               }
@@ -356,7 +412,7 @@ export default function VerificationStudentDetailPage() {
                                 disabled={actionLoading}
                                 className="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-xs transition-colors whitespace-nowrap"
                               >
-                                ⚠️ Request Re-upload &amp; Email Student
+                                ⚠️ Flag for Re-upload
                               </button>
                             </div>
                           </div>
@@ -371,15 +427,27 @@ export default function VerificationStudentDetailPage() {
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <ERPStatusChip status={student.applicationStatus} />
 
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => handleApplicationStatusChange("CORRECTION_REQUIRED")}
-                    disabled={actionLoading}
-                    className="px-4 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-xs transition-colors inline-flex items-center gap-1.5"
-                  >
-                    <span>🔓</span>
-                    <span>Unlock Application for Student Edit (Correction Required)</span>
-                  </button>
+                <div className="flex flex-wrap items-center gap-3">
+                  {flaggedDocsCount > 0 ? (
+                    <button
+                      onClick={handleSendConsolidatedEmail}
+                      disabled={actionLoading}
+                      className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md transition-colors inline-flex items-center gap-2"
+                    >
+                      <span>📧</span>
+                      <span>Unlock Application &amp; Send Consolidated Re-upload Email ({flaggedDocsCount} Items)</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleApplicationStatusChange("CORRECTION_REQUIRED")}
+                      disabled={actionLoading}
+                      className="px-4 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-xs transition-colors inline-flex items-center gap-1.5"
+                    >
+                      <span>🔓</span>
+                      <span>Unlock Application for Student Edit</span>
+                    </button>
+                  )}
+
                   <button
                     onClick={() => handleApplicationStatusChange("DOCUMENTS_VERIFIED")}
                     disabled={actionLoading}
