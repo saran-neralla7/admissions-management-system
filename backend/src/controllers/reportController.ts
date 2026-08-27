@@ -3,6 +3,7 @@ import { prisma } from '../config/prisma.js';
 
 /**
  * GET /api/v1/reports/summary
+ * Provides overall university metrics + detailed School-Wise & Program-Wise analytics for interactive charts.
  */
 export async function getSummaryReport(req: Request, res: Response) {
   try {
@@ -30,6 +31,93 @@ export async function getSummaryReport(req: Request, res: Response) {
       _sum: { amountPaid: true },
     });
 
+    // School-wise & Program-wise analytics aggregation
+    const schoolsData = await prisma.school.findMany({
+      where: userRole !== 'SUPER_ADMIN' && userSchoolId ? { id: userSchoolId } : {},
+      include: {
+        programs: {
+          include: {
+            students: {
+              include: {
+                applications: {
+                  include: {
+                    feeRecords: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const schoolAnalytics = schoolsData.map((school) => {
+      let schoolStudentCount = 0;
+      let schoolAppCount = 0;
+      let schoolVerifiedCount = 0;
+      let schoolFeeClearedCount = 0;
+      let schoolTotalFeeAmount = 0;
+
+      const programsAnalytics = school.programs.map((program) => {
+        const progStudentCount = program.students.length;
+        let progAppCount = 0;
+        let progVerifiedCount = 0;
+        let progFeeClearedCount = 0;
+        let progTotalFeeAmount = 0;
+
+        program.students.forEach((student) => {
+          student.applications.forEach((app) => {
+            progAppCount++;
+            if (
+              app.status === 'DOCUMENTS_VERIFIED' ||
+              app.status === 'FEE_PENDING' ||
+              app.status === 'FEE_CLEARED' ||
+              app.status === 'ADMITTED'
+            ) {
+              progVerifiedCount++;
+            }
+            if (app.status === 'FEE_CLEARED' || app.status === 'ADMITTED') {
+              progFeeClearedCount++;
+            }
+            app.feeRecords.forEach((fee) => {
+              if (fee.status === 'VERIFIED') {
+                progTotalFeeAmount += fee.amountPaid || 0;
+              }
+            });
+          });
+        });
+
+        schoolStudentCount += progStudentCount;
+        schoolAppCount += progAppCount;
+        schoolVerifiedCount += progVerifiedCount;
+        schoolFeeClearedCount += progFeeClearedCount;
+        schoolTotalFeeAmount += progTotalFeeAmount;
+
+        return {
+          programId: program.id,
+          programName: program.name,
+          programCode: program.code,
+          studentCount: progStudentCount,
+          applicationCount: progAppCount,
+          verifiedCount: progVerifiedCount,
+          feeClearedCount: progFeeClearedCount,
+          totalFeeAmount: progTotalFeeAmount,
+        };
+      });
+
+      return {
+        schoolId: school.id,
+        schoolName: school.name,
+        schoolCode: school.code,
+        studentCount: schoolStudentCount,
+        applicationCount: schoolAppCount,
+        verifiedCount: schoolVerifiedCount,
+        feeClearedCount: schoolFeeClearedCount,
+        totalFeeAmount: schoolTotalFeeAmount,
+        programs: programsAnalytics,
+      };
+    });
+
     return res.json({
       success: true,
       data: {
@@ -46,9 +134,11 @@ export async function getSummaryReport(req: Request, res: Response) {
           };
           return acc;
         }, {}),
+        schoolAnalytics,
       },
     });
   } catch (error: any) {
+    console.error('Summary report error:', error);
     return res.status(500).json({ success: false, error: 'Failed to generate summary report.' });
   }
 }
@@ -98,10 +188,12 @@ export async function getAuditLogs(req: Request, res: Response) {
       pagination: {
         total,
         page: pageNum,
+        limit: limitNum,
         totalPages: Math.ceil(total / limitNum),
       },
     });
   } catch (error: any) {
+    console.error('Get audit logs error:', error);
     return res.status(500).json({ success: false, error: 'Failed to fetch audit logs.' });
   }
 }

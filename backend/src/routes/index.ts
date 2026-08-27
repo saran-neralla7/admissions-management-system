@@ -37,6 +37,8 @@ import {
   getStudents,
   unmaskAadhaar,
   resetStudentPassword,
+  admitStudent,
+  requestReverification,
 } from '../controllers/studentController.js';
 import {
   getMyApplication,
@@ -47,6 +49,7 @@ import {
 import {
   uploadDocument,
   updateDocumentStatus,
+  sendConsolidatedReuploadRequest,
   streamDocument,
   deleteDocumentVersion,
 } from '../controllers/documentController.js';
@@ -105,14 +108,17 @@ router.post('/form-builder/clone', authenticateToken, requireRoles('SUPER_ADMIN'
 // --- Student Enrollment & Aadhaar Unmasking Routes ---
 router.post('/students', authenticateToken, requireRoles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'OFFICE_USER'), createStudent);
 router.get('/students', authenticateToken, getStudents);
-router.post('/students/:id/unmask-aadhaar', authenticateToken, requireRoles('SUPER_ADMIN', 'OFFICE_USER'), unmaskAadhaar);
+router.post('/students/:id/unmask-aadhaar', authenticateToken, requireRoles('SUPER_ADMIN', 'OFFICE_USER', 'CENTRAL_OFFICE'), unmaskAadhaar);
 router.post('/students/:id/reset-password', authenticateToken, requireRoles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'OFFICE_USER'), resetStudentPassword);
+router.post('/students/:id/admit', authenticateToken, requireRoles('SUPER_ADMIN', 'CENTRAL_ADMISSIONS', 'SCHOOL_ADMISSIONS'), admitStudent);
+router.post('/students/:id/request-reverification', authenticateToken, requireRoles('SUPER_ADMIN', 'CENTRAL_ADMISSIONS', 'SCHOOL_ADMISSIONS'), requestReverification);
 
 // --- Application Workflow Routes ---
 router.get('/applications/my-application', authenticateToken, getMyApplication);
 router.patch('/applications/my-application/draft', authenticateToken, updateApplicationDraft);
 router.post('/applications/my-application/submit', authenticateToken, submitApplication);
 router.patch('/applications/:id/status', authenticateToken, requireRoles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'OFFICE_USER', 'CENTRAL_ACCOUNTS'), updateApplicationStatus);
+router.post('/applications/:id/send-reupload-request', authenticateToken, requireRoles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'OFFICE_USER', 'CENTRAL_ACCOUNTS'), sendConsolidatedReuploadRequest);
 
 // --- Document Management Routes ---
 router.post('/documents/upload', authenticateToken, upload.single('document'), uploadDocument);

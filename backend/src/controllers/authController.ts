@@ -16,12 +16,33 @@ export async function login(req: Request, res: Response) {
     }
 
     const loginInput = String(email).trim();
+    const inputLower = loginInput.toLowerCase();
 
-    // Query user by email OR Student ID
+    // Map short User IDs (admin, office, accounts) to system email accounts
+    let searchEmails: string[] = [inputLower];
+    if (inputLower === 'admin') {
+      searchEmails.push('admin@gvpihlr.edu.in', 'admin@gvp.edu.in');
+    } else if (inputLower === 'admissions' || inputLower === 'central.admissions') {
+      searchEmails.push('admissions@gvpihlr.edu.in', 'admissions@gvp.edu.in');
+    } else if (inputLower === 'schooladmissions' || inputLower === 'school.admissions') {
+      searchEmails.push('school.admissions@gvpihlr.edu.in', 'school.admissions@gvp.edu.in');
+    } else if (inputLower === 'centraloffice' || inputLower === 'central.office') {
+      searchEmails.push('central.office@gvpihlr.edu.in', 'central.office@gvp.edu.in');
+    } else if (inputLower === 'office') {
+      searchEmails.push('office@gvpihlr.edu.in', 'office@gvp.edu.in');
+    } else if (inputLower === 'accounts' || inputLower === 'central.accounts') {
+      searchEmails.push('accounts@gvpihlr.edu.in', 'accounts@gvp.edu.in');
+    } else if (inputLower === 'schoolaccounts' || inputLower === 'school.accounts') {
+      searchEmails.push('school.accounts@gvpihlr.edu.in', 'school.accounts@gvp.edu.in');
+    } else if (inputLower === 'schooladmin' || inputLower === 'school.admin') {
+      searchEmails.push('school.admin@gvpihlr.edu.in', 'school.admin@gvp.edu.in');
+    }
+
+    // Query user by email OR User ID alias OR Student ID
     const user = await prisma.user.findFirst({
       where: {
         OR: [
-          { email: loginInput.toLowerCase() },
+          { email: { in: searchEmails } },
           { student: { studentId: loginInput } },
         ],
       },

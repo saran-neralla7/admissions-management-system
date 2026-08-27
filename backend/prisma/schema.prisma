@@ -1,10 +1,22 @@
+// Prisma Schema for Admissions Management System
+// Database: SQLite (dev) / PostgreSQL (production)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
 datasource db {
   provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
-generator client {
-  provider = "prisma-client-js"
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  permissions String   // JSON stringified array of permission keys
+  users       User[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model User {
@@ -15,23 +27,16 @@ model User {
   isActive           Boolean      @default(true)
   roleId             String
   role               Role         @relation(fields: [roleId], references: [id])
-  userSchools        UserSchool[]
   student            Student?
+  userSchools        UserSchool[]
   auditLogs          AuditLog[]
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
 }
 
-model Role {
-  id          String   @id @default(uuid())
-  name        String   @unique
-  permissions String   // JSON stringified permission array
-  users       User[]
-}
-
 model School {
   id          String       @id @default(uuid())
-  name        String
+  name        String       @unique
   code        String       @unique
   programs    Program[]
   userSchools UserSchool[]
@@ -40,27 +45,28 @@ model School {
 }
 
 model UserSchool {
-  id       String @id @default(uuid())
-  userId   String
-  schoolId String
-  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
 
   @@unique([userId, schoolId])
 }
 
 model Program {
   id              String           @id @default(uuid())
-  name            String
-  code            String
-  studentIdPrefix String
-  applicationFee  Float            @default(1000.00)
   schoolId        String
   school          School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  name            String
+  code            String
+  studentIdPrefix String           @default("GVP")
+  applicationFee  Float            @default(1500.0)
   admissionCycles AdmissionCycle[]
   students        Student[]
   formFields      FormField[]
-  docRequirements String?          // JSON stringified array of required documents
+  documentRules   DocumentRule[]
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
@@ -85,6 +91,7 @@ model Student {
   encryptedAadhaar String
   aadhaarLast4     String
   fullName         String
+  gender           String?       @default("MALE")
   dateOfBirth      DateTime
   userId           String        @unique
   user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -113,6 +120,22 @@ model FormField {
   @@unique([programId, fieldKey])
 }
 
+model DocumentRule {
+  id           String   @id @default(uuid())
+  programId    String
+  program      Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
+  documentType String
+  label        String
+  isRequired   Boolean  @default(true)
+  maxSizeMB    Int      @default(5)
+  allowedExts  String   // JSON stringified array e.g. [".pdf", ".jpg"]
+  displayOrder Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([programId, documentType])
+}
+
 model Application {
   id               String            @id @default(uuid())
   applicationNo    String            @unique
@@ -120,11 +143,11 @@ model Application {
   student          Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
   admissionCycleId String
   admissionCycle   AdmissionCycle    @relation(fields: [admissionCycleId], references: [id])
-  status           String            @default("ADMISSION_CREATED")
-  customFormData   String            @default("{}") // JSON stringified object
+  status           String            @default("STUDENT_INVITED")
+  dynamicFormData  String?           // JSON stringified submitted form data
   documents        StudentDocument[]
   feeRecords       FeeRecord[]
-  history          StatusHistory[]
+  statusHistory    StatusHistory[]
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 }
@@ -135,21 +158,22 @@ model StudentDocument {
   application   Application       @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   documentType  String
   filePath      String
-  isVerified    Boolean           @default(false)
-  status        String            @default("PENDING_VERIFICATION") // PENDING_VERIFICATION, VERIFIED, REJECTED_REUPLOAD_REQUIRED
+  status        String            @default("UPLOADED") // UPLOADED, VERIFIED, CORRECTION_REQUIRED
   remarks       String?
   versions      DocumentVersion[]
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
+
+  @@unique([applicationId, documentType])
 }
 
 model DocumentVersion {
   id                String          @id @default(uuid())
   studentDocumentId String
   studentDocument   StudentDocument @relation(fields: [studentDocumentId], references: [id], onDelete: Cascade)
-  versionNumber     Int
+  versionNumber     Int             @default(1)
   filePath          String
-  uploadedAt        DateTime        @default(now())
+  createdAt         DateTime        @default(now())
 }
 
 model FeeRecord {
@@ -159,7 +183,7 @@ model FeeRecord {
   amountPaid       Float
   transactionRefNo String
   receiptFilePath  String
-  status           String      @default("PENDING") // PENDING, VERIFIED, REJECTED_REUPLOAD_REQUIRED
+  status           String      @default("PENDING_VERIFICATION") // PENDING_VERIFICATION, VERIFIED, REJECTED_REUPLOAD_REQUIRED
   remarks          String?
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
@@ -184,10 +208,6 @@ model AuditLog {
   action    String
   module    String
   ipAddress String
-  details   String   // JSON stringified details object
+  details   String?  // JSON stringified details
   createdAt DateTime @default(now())
-
-  @@index([createdAt])
-  @@index([action])
-  @@index([userId])
 }

@@ -41,6 +41,10 @@ export function decryptAadhaar(encryptedString: string): string {
   return decrypted;
 }
 
+export function generateTempPassword(): string {
+  return crypto.randomBytes(4).toString('hex') + '!2026';
+}
+
 /**
  * Hash password securely using Argon2id
  */

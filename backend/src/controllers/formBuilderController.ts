@@ -9,11 +9,12 @@ export async function getProgramFormSchema(req: Request, res: Response) {
   try {
     const programId = String(req.params.programId);
 
-    const program = await prisma.program.findUnique({
+    const program: any = await prisma.program.findUnique({
       where: { id: programId },
       include: {
         school: { select: { id: true, name: true, code: true } },
         formFields: { orderBy: { displayOrder: 'asc' } },
+        documentRules: { orderBy: { displayOrder: 'asc' } },
       },
     });
 
@@ -21,7 +22,7 @@ export async function getProgramFormSchema(req: Request, res: Response) {
       return res.status(404).json({ success: false, error: 'Program not found.' });
     }
 
-    const parsedFields = program.formFields.map((f) => {
+    const parsedFields = program.formFields.map((f: any) => {
       let parsedValidation = { required: true, preset: 'none' };
       try {
         if (f.validation) parsedValidation = JSON.parse(f.validation);
@@ -36,20 +37,13 @@ export async function getProgramFormSchema(req: Request, res: Response) {
       };
     });
 
-    let docRequirements: any[] = [];
-    try {
-      if (program.docRequirements) {
-        docRequirements = JSON.parse(program.docRequirements);
-      }
-    } catch (e) {}
-
-    return res.json({ 
-      success: true, 
-      data: { 
-        ...program, 
+    return res.json({
+      success: true,
+      data: {
+        ...program,
         fields: parsedFields,
-        docRequirements: docRequirements,
-      } 
+        docRequirements: program.documentRules || [],
+      },
     });
   } catch (error: any) {
     console.error('Fetch form schema error:', error);
@@ -60,7 +54,6 @@ export async function getProgramFormSchema(req: Request, res: Response) {
 /**
  * PUT /api/v1/form-builder/:programId
  * Updates form fields AND document requirements atomically!
- * Auto-deduplicates field keys to guarantee P2002 unique constraint never fails!
  */
 export async function updateProgramFormSchema(req: Request, res: Response) {
   try {
@@ -77,59 +70,62 @@ export async function updateProgramFormSchema(req: Request, res: Response) {
     }
 
     await prisma.$transaction(async (tx) => {
-      // 1. Update Document Requirements if provided
-      if (docRequirements !== undefined) {
-        await tx.program.update({
-          where: { id: programId },
-          data: {
-            docRequirements: Array.isArray(docRequirements) ? JSON.stringify(docRequirements) : null,
-          },
-        });
+      // 1. Update Document Rules if provided
+      if (Array.isArray(docRequirements)) {
+        await tx.documentRule.deleteMany({ where: { programId } });
+        if (docRequirements.length > 0) {
+          await tx.documentRule.createMany({
+            data: docRequirements.map((d: any, idx: number) => ({
+              programId: programId,
+              documentType: d.documentType || `DOC_${idx}`,
+              label: d.label || d.documentType,
+              isRequired: d.isRequired !== undefined ? Boolean(d.isRequired) : true,
+              maxSizeMB: d.maxSizeMB || 5,
+              allowedExts: JSON.stringify(d.allowedExts || ['.pdf', '.jpg']),
+              displayOrder: idx,
+            })),
+          });
+        }
       }
 
-      // 2. Update Form Fields if provided
+      // 2. Process Form Fields
       if (Array.isArray(fields)) {
         await tx.formField.deleteMany({ where: { programId } });
 
-        if (fields.length > 0) {
-          const usedKeys = new Set<string>();
+        const seenKeys = new Map<string, number>();
+        const sanitizedFields = fields.map((field: any, idx: number) => {
+          let baseKey = String(field.fieldKey || field.fieldLabel || `field_${idx}`)
+            .toLowerCase()
+            .replace(/[^a-z0-9_]/g, '_')
+            .replace(/^_+|_+$/g, '');
 
-          const sanitizedFields = fields.map((f: any, index: number) => {
-            let rawKey = String(f.fieldKey || f.fieldLabel || `field_${index + 1}`)
-              .trim()
-              .toLowerCase()
-              .replace(/[^a-z0-9_]/g, '_')
-              .replace(/^_+|_+$/g, '');
+          if (!baseKey) baseKey = `field_${idx}`;
 
-            if (!rawKey) rawKey = `field_${index + 1}`;
+          const currentCount = seenKeys.get(baseKey) || 0;
+          seenKeys.set(baseKey, currentCount + 1);
 
-            let finalKey = rawKey;
-            let counter = 1;
-            while (usedKeys.has(finalKey)) {
-              finalKey = `${rawKey}_${counter}`;
-              counter++;
-            }
-            usedKeys.add(finalKey);
+          const uniqueKey = currentCount === 0 ? baseKey : `${baseKey}_${currentCount}`;
 
-            const isRequired = typeof f.validation === 'object' ? Boolean(f.validation?.required) : Boolean(f.required);
-            const preset = f.validationPreset || (f.validation && f.validation.preset) || 'none';
+          const validationObj = {
+            required: field.validationPreset === 'none' ? false : field.validation?.required ?? true,
+            preset: field.validationPreset || 'none',
+          };
 
-            return {
-              programId,
-              sectionName: String(f.sectionName || 'General Details').trim(),
-              fieldKey: finalKey,
-              fieldLabel: String(f.fieldLabel || `Question ${index + 1}`).trim(),
-              fieldType: f.fieldType || 'text',
-              options: f.options ? JSON.stringify(f.options) : null,
-              validation: JSON.stringify({ required: isRequired, preset }),
-              conditional: f.conditional ? JSON.stringify(f.conditional) : null,
-              displayOrder: index + 1,
-            };
-          });
+          return {
+            programId,
+            sectionName: String(field.sectionName || 'GENERAL_INFORMATION').toUpperCase().trim(),
+            fieldKey: uniqueKey,
+            fieldLabel: String(field.fieldLabel || 'Untitled Field').trim(),
+            fieldType: String(field.fieldType || 'text').toLowerCase(),
+            options: Array.isArray(field.options) ? JSON.stringify(field.options) : null,
+            validation: JSON.stringify(validationObj),
+            conditional: field.conditional ? JSON.stringify(field.conditional) : null,
+            displayOrder: idx,
+          };
+        });
 
-          await tx.formField.createMany({
-            data: sanitizedFields,
-          });
+        if (sanitizedFields.length > 0) {
+          await tx.formField.createMany({ data: sanitizedFields });
         }
       }
     });
@@ -140,38 +136,31 @@ export async function updateProgramFormSchema(req: Request, res: Response) {
       action: 'FORM_SCHEMA_UPDATED',
       module: 'FORM_BUILDER',
       ipAddress: req.ip || '127.0.0.1',
-      details: { programId, fieldCount: fields?.length || 0, docRequirementCount: docRequirements?.length || 0 },
+      details: { programId, fieldsCount: fields?.length, docRequirementsCount: docRequirements?.length },
     });
 
-    return res.json({ success: true, message: 'Form and document builder schema updated successfully.' });
+    return res.json({ success: true, message: 'Program form schema & document rules updated successfully.' });
   } catch (error: any) {
-    console.error('Form schema update error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to update form schema.' });
+    console.error('Update form schema error:', error);
+    return res.status(500).json({ success: false, error: error.message || 'Failed to update form schema.' });
   }
 }
 
 /**
  * POST /api/v1/form-builder/clone
- * Clones form fields AND document requirements to target program!
+ * Clones form fields AND document rules from source program to target program.
  */
 export async function cloneProgramFormSchema(req: Request, res: Response) {
   try {
     const { sourceProgramId, targetProgramId } = req.body;
 
     if (!sourceProgramId || !targetProgramId) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Both sourceProgramId and targetProgramId are required.' 
-      });
+      return res.status(400).json({ success: false, error: 'Source and Target program IDs are required.' });
     }
 
-    if (sourceProgramId === targetProgramId) {
-      return res.status(400).json({ success: false, error: 'Source and target program cannot be the same.' });
-    }
-
-    const sourceProgram = await prisma.program.findUnique({
+    const sourceProgram: any = await prisma.program.findUnique({
       where: { id: String(sourceProgramId) },
-      include: { formFields: { orderBy: { displayOrder: 'asc' } } },
+      include: { formFields: true, documentRules: true },
     });
 
     if (!sourceProgram) {
@@ -188,18 +177,28 @@ export async function cloneProgramFormSchema(req: Request, res: Response) {
     }
 
     await prisma.$transaction(async (tx) => {
-      // 1. Clone doc requirements
-      await tx.program.update({
-        where: { id: String(targetProgramId) },
-        data: { docRequirements: sourceProgram.docRequirements },
-      });
+      // 1. Clone document rules
+      await tx.documentRule.deleteMany({ where: { programId: String(targetProgramId) } });
+      if (sourceProgram.documentRules.length > 0) {
+        await tx.documentRule.createMany({
+          data: sourceProgram.documentRules.map((rule: any) => ({
+            programId: String(targetProgramId),
+            documentType: rule.documentType,
+            label: rule.label,
+            isRequired: rule.isRequired,
+            maxSizeMB: rule.maxSizeMB,
+            allowedExts: rule.allowedExts,
+            displayOrder: rule.displayOrder,
+          })),
+        });
+      }
 
       // 2. Clone form fields
       await tx.formField.deleteMany({ where: { programId: String(targetProgramId) } });
 
       if (sourceProgram.formFields.length > 0) {
         await tx.formField.createMany({
-          data: sourceProgram.formFields.map((field) => ({
+          data: sourceProgram.formFields.map((field: any) => ({
             programId: String(targetProgramId),
             sectionName: field.sectionName,
             fieldKey: field.fieldKey,
@@ -223,9 +222,9 @@ export async function cloneProgramFormSchema(req: Request, res: Response) {
       details: { sourceProgramId, targetProgramId, clonedCount: sourceProgram.formFields.length },
     });
 
-    return res.json({ 
-      success: true, 
-      message: `Successfully cloned ${sourceProgram.formFields.length} form fields and document requirements to target program.` 
+    return res.json({
+      success: true,
+      message: `Successfully cloned ${sourceProgram.formFields.length} form fields and ${sourceProgram.documentRules.length} document rules to target program.`,
     });
   } catch (error: any) {
     console.error('Form clone error:', error);

@@ -1,81 +1,55 @@
 import { Request, Response } from 'express';
-import path from 'path';
 import fs from 'fs';
+import path from 'path';
 import { prisma } from '../config/prisma.js';
+import { sendConsolidatedReuploadEmail } from '../utils/mailer.js';
 import { createAuditLog } from '../services/auditService.js';
-import { sendReuploadRequestEmail } from '../utils/mailer.js';
-
-const STORAGE_DIR = path.resolve(process.env.STORAGE_DIR || './storage');
 
 /**
  * POST /api/v1/documents/upload
+ * Handles document upload, version archiving, and storage.
  */
 export async function uploadDocument(req: Request, res: Response) {
   try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, error: 'No document file uploaded.' });
-    }
-
     const { applicationId, documentType } = req.body;
 
-    if (!applicationId || !documentType) {
-      if (req.file.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-      return res.status(400).json({ 
-        success: false, 
-        error: 'applicationId and documentType are required.' 
+    if (!applicationId || !documentType || !req.file) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameters: applicationId, documentType, and file scan.',
       });
     }
 
     const application = await prisma.application.findUnique({
       where: { id: String(applicationId) },
-      include: {
-        student: { include: { program: { select: { schoolId: true } } } },
-      },
+      include: { student: true },
     });
 
-    if (!application || !application.student) {
-      if (req.file.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-      return res.status(404).json({ success: false, error: 'Application not found.' });
+    if (!application) {
+      return res.status(404).json({ success: false, error: 'Target application not found.' });
     }
 
-    // Role check & Locking check
-    if (req.user?.role === 'STUDENT') {
-      const student = await prisma.student.findUnique({ where: { userId: req.user.userId } });
-      if (student?.id !== application.studentId) {
-        if (req.file.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-        return res.status(403).json({ success: false, error: 'Forbidden. Mismatch with student application.' });
-      }
+    const storageBaseDir = path.resolve(process.env.STORAGE_DIR || './storage/documents');
+    const studentDir = path.join(storageBaseDir, application.student.studentId);
+    fs.mkdirSync(studentDir, { recursive: true });
 
-      // Enforce strict lock if application is submitted
-      if (application.status !== 'STUDENT_INVITED' && application.status !== 'APPLICATION_IN_PROGRESS' && application.status !== 'CORRECTION_REQUIRED') {
-        if (req.file.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-        return res.status(400).json({
-          success: false,
-          error: 'Application is locked. Document uploads cannot be modified after submission unless unlocked by Admissions Office.',
-        });
-      }
-    } else if (req.user?.role !== 'SUPER_ADMIN' && req.user?.schoolId && req.user?.schoolId !== application.student.program.schoolId) {
-      if (req.file.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-      return res.status(403).json({ success: false, error: 'Forbidden. Mismatch with school scope.' });
-    }
+    const cleanDocType = String(documentType).toUpperCase().trim();
+    const ext = path.extname(req.file.originalname).toLowerCase() || '.pdf';
+    const formattedFileName = `${cleanDocType}${ext}`;
+    const destinationPath = path.join(studentDir, formattedFileName);
 
-    const fileExt = path.extname(req.file.originalname).toLowerCase();
-    const cleanDocType = String(documentType).toLowerCase().replace(/[^a-z0-9]/g, '_');
-    const formattedFileName = `${application.student.studentId}_${cleanDocType}${fileExt}`;
-    const destinationPath = path.join(STORAGE_DIR, formattedFileName);
-
-    let existingDoc = await prisma.studentDocument.findFirst({
-      where: { applicationId: String(applicationId), documentType: cleanDocType },
+    let existingDoc: any = await prisma.studentDocument.findUnique({
+      where: { applicationId_documentType: { applicationId: String(applicationId), documentType: cleanDocType } },
       include: { versions: true },
     });
 
     if (existingDoc) {
       const nextVersionNum = existingDoc.versions.length + 1;
-      const archiveFileName = `${application.student.studentId}_${cleanDocType}_v${nextVersionNum}${fileExt}`;
-      const archivePath = path.join(STORAGE_DIR, archiveFileName);
+      const archiveFileName = `${cleanDocType}_v${existingDoc.versions.length}${ext}`;
+      const archivePath = path.join(studentDir, archiveFileName);
 
       if (fs.existsSync(destinationPath)) {
-        fs.copyFileSync(destinationPath, archivePath);
+        fs.renameSync(destinationPath, archivePath);
       }
 
       await prisma.documentVersion.create({
@@ -92,8 +66,7 @@ export async function uploadDocument(req: Request, res: Response) {
         where: { id: existingDoc.id },
         data: {
           filePath: formattedFileName,
-          isVerified: false,
-          status: 'PENDING_VERIFICATION',
+          status: 'UPLOADED',
           remarks: null,
           updatedAt: new Date(),
         },
@@ -106,8 +79,7 @@ export async function uploadDocument(req: Request, res: Response) {
           applicationId: String(applicationId),
           documentType: cleanDocType,
           filePath: formattedFileName,
-          isVerified: false,
-          status: 'PENDING_VERIFICATION',
+          status: 'UPLOADED',
         },
         include: { versions: true },
       });
@@ -138,15 +110,15 @@ export async function uploadDocument(req: Request, res: Response) {
 
 /**
  * PATCH /api/v1/documents/:id/status
- * Marks document VERIFIED or REJECTED_REUPLOAD_REQUIRED with officer remarks and sends email notification.
+ * Marks document VERIFIED or CORRECTION_REQUIRED with officer remarks in DB.
  */
 export async function updateDocumentStatus(req: Request, res: Response) {
   try {
     const docId = String(req.params.id);
     const { status, remarks } = req.body;
 
-    if (!status || (status !== 'VERIFIED' && status !== 'REJECTED_REUPLOAD_REQUIRED')) {
-      return res.status(400).json({ success: false, error: 'Status must be VERIFIED or REJECTED_REUPLOAD_REQUIRED.' });
+    if (!status || (status !== 'VERIFIED' && status !== 'CORRECTION_REQUIRED')) {
+      return res.status(400).json({ success: false, error: 'Status must be VERIFIED or CORRECTION_REQUIRED.' });
     }
 
     const doc = await prisma.studentDocument.findUnique({
@@ -164,85 +136,125 @@ export async function updateDocumentStatus(req: Request, res: Response) {
       return res.status(404).json({ success: false, error: 'Student document record not found.' });
     }
 
-    const updatedDoc = await prisma.$transaction(async (tx) => {
-      const updated = await tx.studentDocument.update({
-        where: { id: docId },
-        data: {
-          status: status,
-          isVerified: status === 'VERIFIED',
-          remarks: remarks || null,
-        },
-      });
-
-      if (status === 'REJECTED_REUPLOAD_REQUIRED') {
-        await tx.application.update({
-          where: { id: doc.applicationId },
-          data: { status: 'CORRECTION_REQUIRED' },
-        });
-
-        await tx.statusHistory.create({
-          data: {
-            applicationId: doc.applicationId,
-            fromStatus: doc.application.status,
-            toStatus: 'CORRECTION_REQUIRED',
-            changedBy: req.user?.email || 'Verification Officer',
-            remarks: `Re-upload requested for certificate [${doc.documentType}]: ${remarks || 'Needs clear copy'}`,
-          },
-        });
-      }
-
-      return updated;
+    const updatedDoc = await prisma.studentDocument.update({
+      where: { id: docId },
+      data: {
+        status: status,
+        remarks: remarks || null,
+      },
     });
-
-    // Send email notification to student if re-upload is requested
-    if (status === 'REJECTED_REUPLOAD_REQUIRED') {
-      const student = doc.application.student;
-      const loginUrl = process.env.CLIENT_URL || 'http://localhost:3000/login';
-      await sendReuploadRequestEmail({
-        toEmail: student.user.email,
-        studentName: student.fullName,
-        studentId: student.studentId,
-        itemType: `${doc.documentType.toUpperCase()} Certificate Scan`,
-        remarks: remarks || 'Scan is unreadable or blurry, please re-upload clear original copy.',
-        requestedBy: 'Admissions Verification Office',
-        loginUrl: loginUrl,
-      });
-    }
 
     await createAuditLog({
       userId: req.user?.userId,
       roleName: req.user?.role || 'OFFICER',
-      action: status === 'VERIFIED' ? 'CERTIFICATE_VERIFIED' : 'CERTIFICATE_REUPLOAD_REQUESTED',
+      action: status === 'VERIFIED' ? 'CERTIFICATE_VERIFIED' : 'CERTIFICATE_REUPLOAD_FLAGGED',
       module: 'VERIFICATION',
       ipAddress: req.ip || '127.0.0.1',
-      details: { docId, documentType: doc.documentType, status, remarks },
+      details: { studentId: doc.application.student.studentId, documentType: doc.documentType, status, remarks },
     });
 
     return res.json({
       success: true,
-      message: `Document status updated to ${status}. Email notification sent to student.`,
+      message: `Document status updated to ${status}.`,
       data: updatedDoc,
     });
   } catch (error: any) {
+    console.error('Update document status error:', error);
     return res.status(500).json({ success: false, error: 'Failed to update document status.' });
   }
 }
 
 /**
- * GET /api/v1/documents/stream/:fileName
+ * POST /api/v1/documents/send-consolidated-reupload-request
+ * Sends 1 single consolidated email notification to student listing all flagged certificates.
+ */
+export async function sendConsolidatedReuploadRequest(req: Request, res: Response) {
+  try {
+    const { applicationId, reuploadItems } = req.body;
+
+    if (!applicationId || !Array.isArray(reuploadItems) || reuploadItems.length === 0) {
+      return res.status(400).json({ success: false, error: 'Missing applicationId or list of reupload items.' });
+    }
+
+    const application: any = await prisma.application.findUnique({
+      where: { id: String(applicationId) },
+      include: { student: { include: { user: true } } },
+    });
+
+    if (!application || !application.student) {
+      return res.status(404).json({ success: false, error: 'Application or student record not found.' });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.application.update({
+        where: { id: application.id },
+        data: { status: 'CORRECTION_REQUIRED' },
+      });
+
+      await tx.statusHistory.create({
+        data: {
+          applicationId: application.id,
+          fromStatus: application.status,
+          toStatus: 'CORRECTION_REQUIRED',
+          changedBy: req.user?.email || 'Verification Officer',
+          remarks: `Requested re-upload for ${reuploadItems.length} document(s).`,
+        },
+      });
+
+      for (const item of reuploadItems) {
+        await tx.studentDocument.updateMany({
+          where: { applicationId: application.id, documentType: item.itemType },
+          data: { status: 'CORRECTION_REQUIRED', remarks: item.remarks },
+        });
+      }
+    });
+
+    const loginUrl = process.env.CLIENT_URL || 'http://localhost:3000/login';
+    await sendConsolidatedReuploadEmail({
+      toEmail: application.student.user.email,
+      studentName: application.student.fullName,
+      studentId: application.student.studentId,
+      reuploadItems: reuploadItems,
+      requestedBy: req.user?.role === 'CENTRAL_OFFICE' ? 'Central Verification Office' : 'School Verification Office',
+      loginUrl: loginUrl,
+    });
+
+    await createAuditLog({
+      userId: req.user?.userId,
+      roleName: req.user?.role || 'OFFICE_USER',
+      action: 'CONSOLIDATED_REUPLOAD_EMAIL_SENT',
+      module: 'VERIFICATION',
+      ipAddress: req.ip || '127.0.0.1',
+      details: { studentId: application.student.studentId, count: reuploadItems.length },
+    });
+
+    return res.json({
+      success: true,
+      message: `Consolidated re-upload request sent successfully. Single email dispatched to ${application.student.user.email}.`,
+    });
+  } catch (error: any) {
+    console.error('Send consolidated reupload request error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to send consolidated re-upload request.' });
+  }
+}
+
+/**
+ * GET /api/v1/documents/stream/:studentId/:fileName
  */
 export async function streamDocument(req: Request, res: Response) {
   try {
-    const fileName = String(req.params.fileName);
-    const filePath = path.join(STORAGE_DIR, path.basename(fileName));
+    const { studentId, fileName } = req.params;
+    const storageBaseDir = path.resolve(process.env.STORAGE_DIR || './storage/documents');
+    const filePath = path.join(storageBaseDir, String(studentId), String(fileName));
 
     if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ success: false, error: 'Document file not found.' });
+      return res.status(404).json({ success: false, error: 'Requested scan file not found on server.' });
     }
 
     return res.sendFile(filePath);
   } catch (error: any) {
-    return res.status(500).json({ success: false, error: 'Failed to stream document.' });
+    console.error('Stream document error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to stream document file.' });
   }
 }
 
@@ -251,46 +263,19 @@ export async function streamDocument(req: Request, res: Response) {
  */
 export async function deleteDocumentVersion(req: Request, res: Response) {
   try {
-    const versionId = String(req.params.versionId);
-
+    const { versionId } = req.params;
     const version = await prisma.documentVersion.findUnique({
-      where: { id: versionId },
-      include: {
-        studentDocument: {
-          include: {
-            application: { include: { student: { include: { program: { select: { schoolId: true } } } } } },
-          },
-        },
-      },
+      where: { id: String(versionId) },
     });
 
-    if (!version || !version.studentDocument?.application?.student) {
+    if (!version) {
       return res.status(404).json({ success: false, error: 'Document version record not found.' });
     }
 
-    const schoolId = version.studentDocument.application.student.program.schoolId;
-    if (req.user?.role !== 'SUPER_ADMIN' && req.user?.schoolId && req.user?.schoolId !== schoolId) {
-      return res.status(403).json({ success: false, error: 'Forbidden. Mismatch with school scope.' });
-    }
-
-    const archivePath = path.join(STORAGE_DIR, version.filePath);
-    if (fs.existsSync(archivePath)) {
-      fs.unlinkSync(archivePath);
-    }
-
-    await prisma.documentVersion.delete({ where: { id: versionId } });
-
-    await createAuditLog({
-      userId: req.user?.userId,
-      roleName: req.user?.role || 'VERIFICATION_OFFICER',
-      action: 'DOCUMENT_VERSION_DELETED',
-      module: 'DOCUMENTS',
-      ipAddress: req.ip || '127.0.0.1',
-      details: { versionId, filePath: version.filePath },
-    });
-
-    return res.json({ success: true, message: 'Prior document version deleted successfully.' });
+    await prisma.documentVersion.delete({ where: { id: String(versionId) } });
+    return res.json({ success: true, message: 'Document version deleted successfully.' });
   } catch (error: any) {
+    console.error('Delete document version error:', error);
     return res.status(500).json({ success: false, error: 'Failed to delete document version.' });
   }
 }

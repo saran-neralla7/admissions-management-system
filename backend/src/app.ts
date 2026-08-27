@@ -1,47 +1,53 @@
 import express from 'express';
 import cors from 'cors';
-import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
-import apiRouter from './routes/index.js';
+import path from 'path';
+import fs from 'fs';
+import routes from './routes/index.js';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+const STORAGE_DIR = path.resolve(process.env.STORAGE_DIR || './storage');
 
-// Security Middlewares
-app.use(helmet({
-  contentSecurityPolicy: false, // Managed by Nginx proxy in production
-  crossOriginResourcePolicy: { policy: 'cross-origin' },
-}));
+// Ensure local storage directory exists
+if (!fs.existsSync(STORAGE_DIR)) {
+  fs.mkdirSync(STORAGE_DIR, { recursive: true });
+}
 
-app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:3000',
-  credentials: true,
-}));
+// CORS setup supporting credentials (cookies)
+app.use(
+  cors({
+    origin: process.env.CLIENT_URL || 'http://localhost:3000',
+    credentials: true,
+  })
+);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
-// Health Check Endpoint
+// Health Check
 app.get('/health', (req, res) => {
-  res.json({ status: 'HEALTHY', timestamp: new Date().toISOString(), service: 'GVPIHLR Admissions API' });
+  res.json({ status: 'HEALTHY', timestamp: new Date().toISOString(), service: 'GVP Admissions API' });
 });
 
-// API Routes
-app.use('/api/v1', apiRouter);
+// Primary V1 API Routes
+app.use('/api/v1', routes);
 
 // Global Error Handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('Unhandled Global Error:', err);
-  const message = err.message || 'Internal Server Error';
-  res.status(err.status || 500).json({ success: false, error: message });
+  console.error('Unhandled API Error:', err);
+  res.status(err.status || 500).json({
+    success: false,
+    error: err.message || 'Internal Server Error',
+  });
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 GVPIHLR Backend API running on port ${PORT} [${process.env.NODE_ENV || 'development'}]`);
+  console.log(`🚀 GVP Backend API running on port ${PORT} [${process.env.NODE_ENV || 'development'}]`);
 });
 
 export default app;
