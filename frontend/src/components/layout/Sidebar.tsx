@@ -32,7 +32,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ userRole }) => {
           { label: "Register New Student", href: "/students/create", icon: "➕" },
           { label: "Student Roster", href: "/students", icon: "👥" },
           { label: "Certificate Verification", href: "/verification", icon: "🔍" },
-          { label: "Central Accounts & Fees", href: "/finance", icon: "💳" },
+          { label: "Pending Fee Receipts", href: "/finance", icon: "⏳" },
+          { label: "Approved Fee Receipts", href: "/finance/approved", icon: "✅" },
           { label: "Audit Trail & Reports", href: "/audit-logs", icon: "📜" },
         ];
       case "SCHOOL_ADMIN":
@@ -51,7 +52,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ userRole }) => {
       case "SCHOOL_ACCOUNTS":
       case "FINANCE_OFFICER":
         return [
-          { label: "Fee Clearance Portal", href: "/finance", icon: "💳" },
+          { label: "Pending Fee Receipts", href: "/finance", icon: "⏳" },
+          { label: "Approved Fee Receipts", href: "/finance/approved", icon: "✅" },
         ];
       case "STUDENT":
         return [
@@ -73,7 +75,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ userRole }) => {
           Navigation ({userRole || "User"})
         </div>
         {links.map((link) => {
-          const isActive = pathname === link.href || (link.href !== "/dashboard" && pathname.startsWith(link.href));
+          const isActive = pathname === link.href;
           return (
             <Link
               key={link.href}

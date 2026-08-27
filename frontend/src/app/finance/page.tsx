@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { fetchApi } from "@/lib/api";
@@ -61,7 +62,9 @@ export default function FinancePage() {
       const queryString = queryParams.toString() ? `?${queryParams.toString()}` : "";
       const res = await fetchApi(`/fees${queryString}`);
       if (res.success) {
-        setFeeRecords(res.data);
+        // Exclude VERIFIED (Approved) fee receipts so approved items disappear from Pending workspace
+        const pending = res.data.filter((f: any) => f.status !== "VERIFIED");
+        setFeeRecords(pending);
       }
     } catch (err: any) {
       console.error("Failed to load fee records:", err);
@@ -92,10 +95,10 @@ export default function FinancePage() {
       if (res.success) {
         setModalState({
           isOpen: true,
-          title: targetStatus === "VERIFIED" ? "Fee Approved" : "Re-upload Requested",
+          title: targetStatus === "VERIFIED" ? "Fee Receipt Approved" : "Re-upload Requested",
           message:
             targetStatus === "VERIFIED"
-              ? "Fee receipt approved and marked Fee Cleared."
+              ? "Fee receipt approved! This record has been moved to Approved Fee Receipts."
               : "Re-upload requested. Application status set to Correction Required.",
           type: "success",
         });
@@ -131,9 +134,14 @@ export default function FinancePage() {
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 space-y-6">
             <div className="border-b border-slate-100 pb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <h2 className="text-xl font-bold text-slate-900">Central &amp; School Accounts Fee Clearance Portal</h2>
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 bg-amber-50 text-amber-900 font-bold text-[10px] rounded border border-amber-200">
+                    PENDING WORKSPACE
+                  </span>
+                  <h2 className="text-xl font-bold text-slate-900">Pending Fee Clearance Portal</h2>
+                </div>
                 <p className="text-xs text-slate-500 mt-1">
-                  Verify student bank transaction ref numbers, amount paid, and view uploaded payment receipt scans. Request receipt re-uploads if needed.
+                  Verify pending student bank transaction ref numbers, amount paid, and view uploaded payment receipt scans. Once approved, receipts are moved to Approved Receipts.
                 </p>
               </div>
 
@@ -184,21 +192,32 @@ export default function FinancePage() {
                   onClick={loadFees}
                   className="px-3.5 py-2 bg-slate-900 text-white text-xs font-bold rounded-lg hover:bg-slate-800 transition-colors"
                 >
-                  🔄 Refresh Fee Roster
+                  🔄 Refresh Pending Roster
                 </button>
               </div>
             </div>
 
             {loading ? (
-              <GVPLogoSpinner label="Loading Fee Roster..." />
+              <GVPLogoSpinner label="Loading Pending Fee Roster..." />
             ) : feeRecords.length === 0 ? (
-              <div className="p-8 text-center text-xs text-slate-400 border-2 border-dashed rounded-xl">
-                No fee payment records submitted yet for the selected School / Program filter.
+              <div className="p-12 text-center text-xs text-slate-500 border-2 border-dashed rounded-2xl space-y-3 bg-slate-50/50">
+                <div className="text-3xl">🎉</div>
+                <h4 className="text-sm font-bold text-slate-800">No Pending Fee Receipts Requiring Action</h4>
+                <p className="text-slate-500">
+                  All submitted student fee receipts have been verified or no new submissions match your current filter.
+                </p>
+                <div className="pt-2">
+                  <Link
+                    href="/finance/approved"
+                    className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition-colors inline-block"
+                  >
+                    View Approved Fee Receipts &rarr;
+                  </Link>
+                </div>
               </div>
             ) : (
               <div className="space-y-4">
                 {feeRecords.map((f) => {
-                  const isVerified = f.status === "VERIFIED";
                   const isReuploadReq = f.status === "REJECTED_REUPLOAD_REQUIRED";
 
                   return (
@@ -219,14 +238,12 @@ export default function FinancePage() {
                         <div className="flex items-center gap-3">
                           <span
                             className={`px-3 py-1 text-xs font-bold rounded-full border ${
-                              isVerified
-                                ? "bg-emerald-50 text-emerald-900 border-emerald-300"
-                                : isReuploadReq
+                              isReuploadReq
                                 ? "bg-rose-50 text-rose-900 border-rose-300"
                                 : "bg-amber-50 text-amber-900 border-amber-300"
                             }`}
                           >
-                            {isVerified ? "✅ Fee Cleared (Approved)" : isReuploadReq ? "⚠️ Receipt Re-upload Requested" : "⏳ Pending Verification"}
+                            {isReuploadReq ? "⚠️ Receipt Re-upload Requested" : "⏳ Pending Verification"}
                           </span>
 
                           <a
