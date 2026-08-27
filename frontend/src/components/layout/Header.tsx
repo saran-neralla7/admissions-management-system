@@ -38,18 +38,18 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center gap-3">
           <Image
             src="/gvp-logo.png"
-            alt="GVPIHLR Logo"
+            alt="GVP Logo"
             width={40}
             height={40}
             className="object-contain"
             priority
           />
           <div>
-            <h1 className="text-sm font-bold text-slate-900 tracking-tight leading-tight">
-              GVPIHLR Admissions ERP
+            <h1 className="text-sm font-bold text-slate-900 tracking-tight leading-tight flex items-center gap-2">
+              <span>GVP Admissions ERP</span>
             </h1>
             <p className="text-xs text-slate-500 font-medium">
-              {schoolName || "Gayatri Vidya Parishad Institution of Higher Learning"}
+              {schoolName || "Gayatri Vidya Parishad"}
             </p>
           </div>
         </div>

@@ -5,6 +5,7 @@ import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { fetchApi } from "@/lib/api";
 import { ERPModal } from "@/components/ui/ERPModal";
+import { GVPLogoSpinner } from "@/components/ui/GVPLogoSpinner";
 
 export default function FinancePage() {
   const [currentUser, setCurrentUser] = useState<any | null>(null);
@@ -150,7 +151,7 @@ export default function FinancePage() {
             </div>
 
             {loading ? (
-              <div className="p-8 text-center text-xs text-slate-400">Loading fee transactions...</div>
+              <GVPLogoSpinner label="Loading Central Accounts Fee Roster..." />
             ) : feeRecords.length === 0 ? (
               <div className="p-8 text-center text-xs text-slate-400 border-2 border-dashed rounded-xl">
                 No fee payment records submitted yet for the selected filter.

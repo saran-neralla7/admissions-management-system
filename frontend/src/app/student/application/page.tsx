@@ -6,6 +6,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { fetchApi, uploadApi } from "@/lib/api";
 import { ERPStatusChip } from "@/components/ui/ERPStatusChip";
 import { ERPModal } from "@/components/ui/ERPModal";
+import { GVPLogoSpinner } from "@/components/ui/GVPLogoSpinner";
 
 export default function StudentApplicationPage() {
   const [appData, setAppData] = useState<any | null>(null);
@@ -174,7 +175,7 @@ export default function StudentApplicationPage() {
 
     setActionLoading(true);
     try {
-      // First save latest form draft
+      // Save draft first
       await fetchApi("/applications/my-application/draft", {
         method: "PATCH",
         body: JSON.stringify({ customFormData: formData }),
@@ -188,7 +189,7 @@ export default function StudentApplicationPage() {
         setModalState({
           isOpen: true,
           title: "Application Submitted & Locked! 🎉",
-          message: "Your application has been locked and submitted to the Admissions Verification Office.",
+          message: "Your application has been locked and submitted to GVP Admissions Verification Office.",
           type: "success",
         });
         setIsEditingOverride(false);
@@ -252,7 +253,14 @@ export default function StudentApplicationPage() {
   };
 
   if (loading) {
-    return <div className="min-h-screen bg-slate-100 p-8 text-center text-xs text-slate-500">Loading student portal...</div>;
+    return (
+      <div className="min-h-screen bg-slate-100 flex flex-col">
+        <Header userEmail="Student" userRole="STUDENT" />
+        <div className="flex-1 flex items-center justify-center">
+          <GVPLogoSpinner label="Loading GVP Student Application Portal..." />
+        </div>
+      </div>
+    );
   }
 
   if (!appData) {
@@ -263,7 +271,7 @@ export default function StudentApplicationPage() {
           <Sidebar userRole="STUDENT" />
           <main className="flex-1 p-8">
             <div className="bg-white rounded-xl p-8 text-center text-slate-500 text-xs border">
-              No active application record found. Please contact the Admissions Office.
+              No active application record found. Please contact GVP Admissions Office.
             </div>
           </main>
         </div>
@@ -277,7 +285,6 @@ export default function StudentApplicationPage() {
   const uploadedDocuments = application.documents || [];
   const feeRecords = application.feeRecords || [];
 
-  // Lock status determination: Editable ONLY if status is STUDENT_INVITED, APPLICATION_IN_PROGRESS, or CORRECTION_REQUIRED
   const isUnlockedStatus =
     application.status === "STUDENT_INVITED" ||
     application.status === "APPLICATION_IN_PROGRESS" ||
@@ -285,7 +292,6 @@ export default function StudentApplicationPage() {
 
   const isFormLocked = !isUnlockedStatus && !isEditingOverride;
 
-  // Group form fields by sectionName
   const groupedSections: Record<string, any[]> = {};
   programFields.forEach((f: any) => {
     const sec = f.sectionName || "General Details";
@@ -296,7 +302,6 @@ export default function StudentApplicationPage() {
   const sectionTitles = Object.keys(groupedSections);
   if (sectionTitles.length === 0) sectionTitles.push("General Details");
 
-  // Stepper Steps: Section 1..N -> Document Uploads -> Consent & Declaration
   const allWizardSteps = [
     ...sectionTitles.map((title, idx) => ({ id: `sec_${idx}`, label: title, type: "form_section", index: idx })),
     { id: "sec_docs", label: "Document Scans Upload", type: "documents", index: sectionTitles.length },
@@ -350,7 +355,7 @@ export default function StudentApplicationPage() {
             </div>
           )}
 
-          {/* IF FORM IS LOCKED: SHOW READ-ONLY SUBMITTED APPLICATION SUMMARY */}
+          {/* IF FORM IS LOCKED: READ-ONLY SUMMARY PORTAL */}
           {isFormLocked ? (
             <div className="space-y-6">
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 space-y-6">
@@ -539,7 +544,7 @@ export default function StudentApplicationPage() {
               </div>
             </div>
           ) : (
-            /* IF FORM IS EDITABLE: STEP-BY-STEP MULTI-SECTION WIZARD WITH PROGRESS BAR */
+            /* IF FORM IS EDITABLE: STEP WIZARD WITH TOP STEPPER */
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 space-y-8">
               {/* TOP PROGRESS STEPPER BAR */}
               <div className="space-y-4">
@@ -871,34 +876,79 @@ export default function StudentApplicationPage() {
                   </div>
                 )}
 
-                {/* 3. AADHAAR CONSENT & DECLARATION STEP */}
+                {/* 3. COOL INTERACTIVE AADHAAR CONSENT & DECLARATION STEP */}
                 {currentStep.type === "consent" && (
                   <div className="space-y-6">
                     <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-b pb-2 flex items-center gap-2">
-                      <span>🛡️</span> Final Step: Aadhaar Consent &amp; Verification Declaration
+                      <span>🛡️</span> Final Step: Aadhaar Verification &amp; Consent Agreement
                     </h4>
 
-                    <div className="p-6 bg-slate-50 border border-slate-200 rounded-2xl space-y-4 text-xs">
-                      <h5 className="font-bold text-slate-900 uppercase">Information Accuracy &amp; PII Consent Declaration</h5>
-                      <p className="text-slate-600 leading-relaxed">
-                        By submitting this application, I hereby declare that all information, mark percentages, personal details, and certificate scans provided herein are authentic, original, and true to the best of my knowledge.
-                      </p>
-                      <p className="text-slate-600 leading-relaxed">
-                        <strong>Aadhaar Verification Consent:</strong> I voluntarily consent to provide my 12-digit Aadhaar number and uploaded document scans to <strong>Gayatri Vidya Parishad Institution of Higher Learning (GVPIHLR)</strong> for student identity verification, admission processing, and audit compliance under AES-256 encrypted security protocols.
-                      </p>
+                    {/* COOL INTERACTIVE CONSENT CARD */}
+                    <div
+                      className={`p-6 rounded-2xl border transition-all duration-300 space-y-6 ${
+                        aadhaarConsent
+                          ? "bg-slate-900 text-white border-slate-900 shadow-xl ring-2 ring-emerald-500/50"
+                          : "bg-slate-50 text-slate-800 border-slate-200 shadow-xs"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between border-b border-slate-700/50 pb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center text-xl">
+                            📜
+                          </div>
+                          <div>
+                            <h5 className="font-bold text-sm">GVP Identity &amp; Aadhaar Verification Agreement</h5>
+                            <span className="text-[11px] opacity-75">Encrypted AES-256 Protocol &bull; Statutory Compliance</span>
+                          </div>
+                        </div>
 
-                      <div className="pt-2 border-t">
-                        <label className="flex items-start gap-3 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={aadhaarConsent}
-                            onChange={(e) => setAadhaarConsent(e.target.checked)}
-                            className="w-5 h-5 rounded text-slate-900 border-slate-300 mt-0.5"
-                          />
-                          <span className="font-bold text-slate-900 leading-tight">
-                            I agree to the Aadhaar Consent &amp; Information Accuracy Declaration. Lock and submit my application. *
+                        <span
+                          className={`px-3.5 py-1 text-xs font-bold rounded-full border transition-all ${
+                            aadhaarConsent
+                              ? "bg-emerald-500/20 text-emerald-300 border-emerald-400/30"
+                              : "bg-amber-100 text-amber-900 border-amber-300"
+                          }`}
+                        >
+                          {aadhaarConsent ? "✅ Consent Verified & Signed" : "⏳ Consent Pending"}
+                        </span>
+                      </div>
+
+                      <div className="space-y-3 text-xs leading-relaxed opacity-90">
+                        <p>
+                          I hereby declare that all personal details, academic percentage marks, and certificate scans submitted in this application are authentic, original, and accurate to the best of my knowledge.
+                        </p>
+                        <p>
+                          <strong>Aadhaar Consent Clause:</strong> I voluntarily consent to provide my 12-digit Aadhaar number and uploaded document scans to <strong>Gayatri Vidya Parishad (GVP)</strong> for student identity verification, admission processing, and audit compliance under AES-256 encrypted security protocols.
+                        </p>
+                      </div>
+
+                      {/* Cool Toggle Action Box */}
+                      <div
+                        onClick={() => setAadhaarConsent(!aadhaarConsent)}
+                        className={`p-4 rounded-xl border cursor-pointer select-none transition-all flex items-center justify-between ${
+                          aadhaarConsent
+                            ? "bg-emerald-500/15 border-emerald-400/40 text-emerald-200"
+                            : "bg-white border-slate-300 hover:border-slate-400 text-slate-900"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`w-6 h-6 rounded-lg flex items-center justify-center border transition-all font-bold text-xs ${
+                              aadhaarConsent
+                                ? "bg-emerald-500 text-white border-emerald-400 scale-110"
+                                : "bg-slate-100 border-slate-400 text-transparent"
+                            }`}
+                          >
+                            ✓
+                          </div>
+                          <span className="font-bold text-xs">
+                            I accept the terms, verify information accuracy, and sign Aadhaar consent.
                           </span>
-                        </label>
+                        </div>
+
+                        <span className="text-[11px] font-mono opacity-75">
+                          {aadhaarConsent ? "[ CLICK TO UNCHECK ]" : "[ CLICK TO SIGN ]"}
+                        </span>
                       </div>
                     </div>
                   </div>

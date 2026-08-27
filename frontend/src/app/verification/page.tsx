@@ -8,6 +8,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { fetchApi } from "@/lib/api";
 import { ERPStatusChip } from "@/components/ui/ERPStatusChip";
 import { ERPModal } from "@/components/ui/ERPModal";
+import { GVPLogoSpinner } from "@/components/ui/GVPLogoSpinner";
 
 export default function VerificationPage() {
   const router = useRouter();
@@ -73,7 +74,6 @@ export default function VerificationPage() {
     }
   };
 
-  // Get available programs for selected school filter
   const selectedSchoolObj = schools.find((s) => s.id === selectedSchoolId);
   const availablePrograms = selectedSchoolId
     ? selectedSchoolObj?.programs || []
@@ -180,7 +180,7 @@ export default function VerificationPage() {
             </div>
 
             {loading ? (
-              <div className="p-8 text-center text-xs text-slate-400">Loading student roster...</div>
+              <GVPLogoSpinner label="Loading Verification Roster..." />
             ) : students.length === 0 ? (
               <div className="p-8 text-center text-xs text-slate-400 border-2 border-dashed rounded-xl">
                 No student applications match the selected School / Program filter.

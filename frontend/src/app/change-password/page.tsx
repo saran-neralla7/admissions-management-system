@@ -90,7 +90,7 @@ export default function ChangePasswordPage() {
       <div className="w-full max-w-md bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden">
         <div className="p-8 text-center border-b border-slate-100 bg-slate-50/50">
           <div className="flex justify-center mb-4">
-            <Image src="/gvp-logo.png" alt="GVPIHLR Logo" width={64} height={64} priority />
+            <Image src="/gvp-logo.png" alt="GVP Logo" width={64} height={64} priority />
           </div>
           <h2 className="text-xl font-bold text-slate-900">Change Temporary Password</h2>
           <p className="text-xs text-slate-500 mt-1">
