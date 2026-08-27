@@ -8,7 +8,7 @@ import { ERPModal } from "@/components/ui/ERPModal";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [loginInput, setLoginInput] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -27,11 +27,11 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) {
+    if (!loginInput || !password) {
       setModalState({
         isOpen: true,
         title: "Missing Credentials",
-        message: "Please enter both your email address and password to continue.",
+        message: "Please enter your Email Address or Student ID and password to continue.",
         type: "warning",
       });
       return;
@@ -41,7 +41,7 @@ export default function LoginPage() {
     try {
       const res = await fetchApi("/auth/login", {
         method: "POST",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: loginInput, password }),
       });
 
       if (res.success) {
@@ -50,9 +50,9 @@ export default function LoginPage() {
           router.push("/change-password");
         } else if (user.role === "STUDENT") {
           router.push("/student/application");
-        } else if (user.role === "VERIFICATION_OFFICER") {
+        } else if (user.role === "VERIFICATION_OFFICER" || user.role === "OFFICE_USER" || user.role === "SCHOOL_ADMIN") {
           router.push("/verification");
-        } else if (user.role === "FINANCE_OFFICER") {
+        } else if (user.role === "FINANCE_OFFICER" || user.role === "CENTRAL_ACCOUNTS") {
           router.push("/finance");
         } else {
           router.push("/dashboard");
@@ -95,14 +95,14 @@ export default function LoginPage() {
         <form onSubmit={handleLogin} className="p-8 space-y-5">
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
-              Email Address / Student Email
+              Email Address / Student Login ID
             </label>
             <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="e.g. student@gvpihlr.edu.in"
-              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all"
+              type="text"
+              value={loginInput}
+              onChange={(e) => setLoginInput(e.target.value)}
+              placeholder="e.g. GVPCSE2026-001 or email@domain.com"
+              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all font-mono"
               required
             />
           </div>
