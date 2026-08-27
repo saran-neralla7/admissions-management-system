@@ -58,6 +58,8 @@ export default function StudentApplicationPage() {
     }
   };
 
+  const cleanDocKey = (str: string) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, "_");
+
   const handleInputChange = (key: string, val: any) => {
     setFormData((prev) => ({ ...prev, [key]: val }));
   };
@@ -120,22 +122,24 @@ export default function StudentApplicationPage() {
     }
   };
 
-  const handleDocumentFileUpload = async (docType: string) => {
-    const file = selectedDocFiles[docType];
+  const handleDocumentFileUpload = async (docType: string, docLabel: string) => {
+    const targetKey = cleanDocKey(docType) || cleanDocKey(docLabel);
+    const file = selectedDocFiles[targetKey] || selectedDocFiles[docType] || selectedDocFiles[docLabel];
+
     if (!file || !appData) {
       setModalState({
         isOpen: true,
         title: "No File Selected",
-        message: "Please choose a file scan (PDF, JPG, PNG) before clicking Upload.",
+        message: `Please choose a file scan (PDF, JPG, PNG) for ${docLabel} before clicking Upload.`,
         type: "warning",
       });
       return;
     }
 
-    setUploadingDocType(docType);
+    setUploadingDocType(targetKey);
     const payload = new FormData();
     payload.append("applicationId", appData.application.id);
-    payload.append("documentType", docType);
+    payload.append("documentType", targetKey);
     payload.append("document", file);
 
     try {
@@ -144,11 +148,11 @@ export default function StudentApplicationPage() {
         setModalState({
           isOpen: true,
           title: "Document Uploaded",
-          message: `Certificate uploaded successfully. Verification officers will audit your scan.`,
+          message: `Certificate scan for ${docLabel} uploaded successfully. Verification officers will audit your scan.`,
           type: "success",
         });
-        setSelectedDocFiles((prev) => ({ ...prev, [docType]: null }));
-        loadMyApplication();
+        setSelectedDocFiles((prev) => ({ ...prev, [targetKey]: null, [docType]: null, [docLabel]: null }));
+        await loadMyApplication();
       }
     } catch (err: any) {
       setModalState({
@@ -175,7 +179,6 @@ export default function StudentApplicationPage() {
 
     setActionLoading(true);
     try {
-      // Save draft first
       await fetchApi("/applications/my-application/draft", {
         method: "PATCH",
         body: JSON.stringify({ customFormData: formData }),
@@ -783,7 +786,12 @@ export default function StudentApplicationPage() {
                     ) : (
                       <div className="space-y-4">
                         {docRequirements.map((d: any) => {
-                          const existingDoc = uploadedDocuments.find((doc: any) => doc.documentType === d.type);
+                          const targetKey = cleanDocKey(d.type) || cleanDocKey(d.label);
+                          const existingDoc = uploadedDocuments.find((doc: any) => 
+                            cleanDocKey(doc.documentType) === targetKey ||
+                            cleanDocKey(doc.documentType) === cleanDocKey(d.type) ||
+                            cleanDocKey(doc.documentType) === cleanDocKey(d.label)
+                          );
                           const latestVersion = existingDoc?.versions?.[0];
                           const isVerified = existingDoc?.status === "VERIFIED";
                           const isReuploadReq = existingDoc?.status === "REJECTED_REUPLOAD_REQUIRED";
@@ -842,22 +850,22 @@ export default function StudentApplicationPage() {
                                   accept=".pdf,.jpg,.jpeg,.png"
                                   onChange={(e) => {
                                     const f = e.target.files ? e.target.files[0] : null;
-                                    setSelectedDocFiles((prev) => ({ ...prev, [d.type]: f }));
+                                    setSelectedDocFiles((prev) => ({ ...prev, [targetKey]: f }));
                                   }}
                                   className="flex-1 text-xs border rounded-lg p-2 bg-white"
                                 />
                                 <button
-                                  onClick={() => handleDocumentFileUpload(d.type)}
-                                  disabled={uploadingDocType === d.type || !selectedDocFiles[d.type]}
+                                  onClick={() => handleDocumentFileUpload(d.type, d.label)}
+                                  disabled={uploadingDocType === targetKey || !selectedDocFiles[targetKey]}
                                   className="px-4 py-2 bg-slate-900 text-white font-bold text-xs rounded-lg hover:bg-slate-800 transition-colors whitespace-nowrap"
                                 >
-                                  {uploadingDocType === d.type ? "Uploading..." : "📤 Upload Scan"}
+                                  {uploadingDocType === targetKey ? "Uploading..." : "📤 Upload Scan"}
                                 </button>
                               </div>
 
                               {latestVersion && (
                                 <div className="text-[11px] text-slate-600 bg-white p-2.5 border rounded-lg flex items-center justify-between">
-                                  <span>Uploaded: {latestVersion.fileName} (v{latestVersion.versionNumber})</span>
+                                  <span>Uploaded File: <strong className="font-mono text-slate-900">{latestVersion.fileName}</strong> (v{latestVersion.versionNumber})</span>
                                   <a
                                     href={`http://localhost:4000/api/v1/documents/stream/${latestVersion.fileName}`}
                                     target="_blank"
