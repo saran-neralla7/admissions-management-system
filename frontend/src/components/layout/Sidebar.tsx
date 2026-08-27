@@ -48,14 +48,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ userRole }) => {
         return [
           { label: "Certificate Verification", href: "/verification", icon: "🔍" },
           { label: "Register New Student", href: "/students/create", icon: "➕" },
-          { label: "Student Roster", href: "/students", icon: "👥" },
-          { label: "Form & Doc Builder", href: "/admin/form-builder", icon: "⚙️" },
         ];
       case "CENTRAL_ACCOUNTS":
       case "FINANCE_OFFICER":
         return [
           { label: "Fee Clearance Portal", href: "/finance", icon: "💳" },
-          { label: "Fee Audit Logs", href: "/audit-logs", icon: "📜" },
         ];
       case "STUDENT":
         return [
