@@ -38,12 +38,21 @@ export async function uploadDocument(req: Request, res: Response) {
       return res.status(404).json({ success: false, error: 'Application not found.' });
     }
 
-    // Role check
+    // Role check & Locking check
     if (req.user?.role === 'STUDENT') {
       const student = await prisma.student.findUnique({ where: { userId: req.user.userId } });
       if (student?.id !== application.studentId) {
         if (req.file.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         return res.status(403).json({ success: false, error: 'Forbidden. Mismatch with student application.' });
+      }
+
+      // Enforce strict lock if application is submitted
+      if (application.status !== 'STUDENT_INVITED' && application.status !== 'APPLICATION_IN_PROGRESS' && application.status !== 'CORRECTION_REQUIRED') {
+        if (req.file.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        return res.status(400).json({
+          success: false,
+          error: 'Application is locked. Document uploads cannot be modified after submission unless unlocked by Admissions Office.',
+        });
       }
     } else if (req.user?.role !== 'SUPER_ADMIN' && req.user?.schoolId && req.user?.schoolId !== application.student.program.schoolId) {
       if (req.file.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);

@@ -10,13 +10,21 @@ import { ERPModal } from "@/components/ui/ERPModal";
 export default function StudentApplicationPage() {
   const [appData, setAppData] = useState<any | null>(null);
   const [formData, setFormData] = useState<Record<string, any>>({});
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [aadhaarConsent, setAadhaarConsent] = useState(false);
+  const [isEditingOverride, setIsEditingOverride] = useState(false);
+
+  // Fee state
   const [amountPaid, setAmountPaid] = useState("");
   const [transactionRefNo, setTransactionRefNo] = useState("");
   const [feeFile, setFeeFile] = useState<File | null>(null);
-  const [uploadingDocType, setUploadingDocType] = useState<string | null>(null);
   const [submittingFee, setSubmittingFee] = useState(false);
+
+  // Document upload state
+  const [uploadingDocType, setUploadingDocType] = useState<string | null>(null);
   const [selectedDocFiles, setSelectedDocFiles] = useState<Record<string, File | null>>({});
   const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
 
   const [modalState, setModalState] = useState<{
     isOpen: boolean;
@@ -154,17 +162,36 @@ export default function StudentApplicationPage() {
   };
 
   const handleSubmitApplication = async () => {
+    if (!aadhaarConsent) {
+      setModalState({
+        isOpen: true,
+        title: "Consent Required",
+        message: "Please read and check the mandatory Aadhaar & Information Verification Consent checkbox before submitting.",
+        type: "warning",
+      });
+      return;
+    }
+
+    setActionLoading(true);
     try {
+      // First save latest form draft
+      await fetchApi("/applications/my-application/draft", {
+        method: "PATCH",
+        body: JSON.stringify({ customFormData: formData }),
+      });
+
       const res = await fetchApi("/applications/my-application/submit", {
         method: "POST",
       });
+
       if (res.success) {
         setModalState({
           isOpen: true,
-          title: "Application Submitted Successfully!",
-          message: "Your application has been submitted to the verification office.",
+          title: "Application Submitted & Locked! 🎉",
+          message: "Your application has been locked and submitted to the Admissions Verification Office.",
           type: "success",
         });
+        setIsEditingOverride(false);
         loadMyApplication();
       }
     } catch (err: any) {
@@ -174,6 +201,8 @@ export default function StudentApplicationPage() {
         message: err.message || "Could not submit application.",
         type: "danger",
       });
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -202,7 +231,7 @@ export default function StudentApplicationPage() {
         setModalState({
           isOpen: true,
           title: "Fee Receipt Submitted",
-          message: "Your payment receipt has been submitted to the Central Accounts Office for verification.",
+          message: "Your payment receipt has been submitted to Central Accounts for verification.",
           type: "success",
         });
         setAmountPaid("");
@@ -229,7 +258,7 @@ export default function StudentApplicationPage() {
   if (!appData) {
     return (
       <div className="min-h-screen bg-slate-100 flex flex-col">
-        <Header userEmail="student@gvpihlr.edu.in" userRole="STUDENT" />
+        <Header userEmail="Student" userRole="STUDENT" />
         <div className="flex-1 flex">
           <Sidebar userRole="STUDENT" />
           <main className="flex-1 p-8">
@@ -248,7 +277,15 @@ export default function StudentApplicationPage() {
   const uploadedDocuments = application.documents || [];
   const feeRecords = application.feeRecords || [];
 
-  // Group fields by sectionName
+  // Lock status determination: Editable ONLY if status is STUDENT_INVITED, APPLICATION_IN_PROGRESS, or CORRECTION_REQUIRED
+  const isUnlockedStatus =
+    application.status === "STUDENT_INVITED" ||
+    application.status === "APPLICATION_IN_PROGRESS" ||
+    application.status === "CORRECTION_REQUIRED";
+
+  const isFormLocked = !isUnlockedStatus && !isEditingOverride;
+
+  // Group form fields by sectionName
   const groupedSections: Record<string, any[]> = {};
   programFields.forEach((f: any) => {
     const sec = f.sectionName || "General Details";
@@ -256,44 +293,320 @@ export default function StudentApplicationPage() {
     groupedSections[sec].push(f);
   });
 
+  const sectionTitles = Object.keys(groupedSections);
+  if (sectionTitles.length === 0) sectionTitles.push("General Details");
+
+  // Stepper Steps: Section 1..N -> Document Uploads -> Consent & Declaration
+  const allWizardSteps = [
+    ...sectionTitles.map((title, idx) => ({ id: `sec_${idx}`, label: title, type: "form_section", index: idx })),
+    { id: "sec_docs", label: "Document Scans Upload", type: "documents", index: sectionTitles.length },
+    { id: "sec_consent", label: "Aadhaar Consent & Submit", type: "consent", index: sectionTitles.length + 1 },
+  ];
+
+  const currentStep = allWizardSteps[Math.min(currentStepIndex, allWizardSteps.length - 1)];
+
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
       <Header userEmail={student.fullName} userRole="STUDENT" schoolName={student.program.school.name} />
       <div className="flex-1 flex">
         <Sidebar userRole="STUDENT" />
-        <main className="flex-1 p-8 max-w-4xl space-y-6">
-          {/* Header Card */}
+        <main className="flex-1 p-8 max-w-5xl space-y-6">
+          {/* Top Student Banner Card */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
-              <div className="text-xs font-mono font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-md inline-block mb-1 border border-blue-100">
+              <span className="px-2.5 py-1 bg-blue-50 text-blue-900 font-bold font-mono text-xs rounded-md border border-blue-200 inline-block mb-1">
                 {student.studentId}
-              </div>
+              </span>
               <h2 className="text-xl font-bold text-slate-900">{student.fullName}</h2>
-              <p className="text-xs text-slate-500 mt-0.5">{student.program.name}</p>
+              <p className="text-xs text-slate-500 mt-0.5">{student.program.name} ({student.program.school.name})</p>
             </div>
-            <div>
+            <div className="flex items-center gap-3">
               <ERPStatusChip status={application.status} />
+              {!isUnlockedStatus && (
+                <span className="px-3 py-1 bg-slate-100 text-slate-700 font-bold text-xs rounded-full border border-slate-300 inline-flex items-center gap-1">
+                  <span>🔒 Form Locked</span>
+                </span>
+              )}
             </div>
           </div>
 
-          {/* Dynamic Form Card */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 space-y-6">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-700 border-b pb-3">
-              Application Details Form
-            </h3>
+          {/* Correction Required Warning Banner */}
+          {application.status === "CORRECTION_REQUIRED" && (
+            <div className="p-5 bg-rose-50 border border-rose-300 rounded-2xl shadow-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-rose-900 uppercase tracking-wider flex items-center gap-2">
+                  <span>⚠️</span> Correction Required by Admissions / Finance Officer
+                </h4>
+                <button
+                  onClick={() => setIsEditingOverride(true)}
+                  className="px-3 py-1 bg-rose-900 text-white font-bold text-xs rounded-lg hover:bg-rose-800 transition-colors"
+                >
+                  🔓 Edit Form / Re-upload File
+                </button>
+              </div>
+              <p className="text-xs text-rose-800">
+                The verification officer requested corrections to your form responses or document scans. Please inspect the officer notes below and click Edit to make corrections.
+              </p>
+            </div>
+          )}
 
-            {programFields.length === 0 ? (
-              <p className="text-xs text-slate-400">Standard application fields initialized.</p>
-            ) : (
-              <div className="space-y-8">
-                {Object.entries(groupedSections).map(([sectionTitle, secFields]) => (
-                  <div key={sectionTitle} className="border border-slate-200 rounded-xl p-5 bg-slate-50/50 space-y-4">
-                    <h4 className="text-xs font-bold uppercase text-slate-800 tracking-wider border-b pb-2 flex items-center gap-2">
-                      <span>📁</span> {sectionTitle}
+          {/* IF FORM IS LOCKED: SHOW READ-ONLY SUBMITTED APPLICATION SUMMARY */}
+          {isFormLocked ? (
+            <div className="space-y-6">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 space-y-6">
+                <div className="border-b pb-4 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">📄 Submitted Application Summary</h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Your application has been submitted and locked for verification. View your responses below.
+                    </p>
+                  </div>
+                  <span className="px-3 py-1 bg-emerald-50 text-emerald-900 font-bold text-xs rounded-full border border-emerald-200">
+                    ✓ Submitted
+                  </span>
+                </div>
+
+                {/* Section-by-Section Form Summary */}
+                <div className="space-y-6">
+                  {Object.entries(groupedSections).map(([secTitle, secFields]) => (
+                    <div key={secTitle} className="border border-slate-200 rounded-xl p-5 bg-slate-50/50 space-y-3">
+                      <h4 className="text-xs font-bold uppercase text-slate-800 tracking-wider border-b pb-2 flex items-center gap-2">
+                        <span>📁</span> {secTitle}
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {secFields.map((f: any) => {
+                          const val = formData[f.fieldKey];
+                          return (
+                            <div key={f.id} className="p-3.5 bg-white border border-slate-200 rounded-xl text-xs space-y-1">
+                              <span className="text-[10px] font-bold uppercase text-slate-500 block">{f.fieldLabel}</span>
+                              {typeof val === "object" && val !== null ? (
+                                <div className="font-mono text-slate-900">
+                                  Secured: {val.secured} / {val.total} | <strong className="text-green-700 font-bold">{val.percentage}%</strong>
+                                </div>
+                              ) : Array.isArray(val) ? (
+                                <div className="font-semibold text-slate-900">{val.join(", ")}</div>
+                              ) : (
+                                <div className="font-semibold text-slate-900">{String(val || "N/A")}</div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Uploaded Certificate Status Summary */}
+                <div className="space-y-3 border-t pt-6">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                    📁 Uploaded Certificate Scans ({uploadedDocuments.length} Scans)
+                  </h4>
+                  {uploadedDocuments.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic">No certificates uploaded.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {uploadedDocuments.map((doc: any) => {
+                        const latestVersion = doc.versions?.[0];
+                        const isVerified = doc.status === "VERIFIED";
+                        const isReuploadReq = doc.status === "REJECTED_REUPLOAD_REQUIRED";
+
+                        return (
+                          <div key={doc.id} className="p-4 border rounded-xl bg-white flex items-center justify-between text-xs">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold uppercase text-slate-900">{doc.documentType}</span>
+                                <span
+                                  className={`px-2 py-0.5 text-[10px] font-bold rounded-full border ${
+                                    isVerified
+                                      ? "bg-emerald-50 text-emerald-900 border-emerald-300"
+                                      : isReuploadReq
+                                      ? "bg-rose-50 text-rose-900 border-rose-300"
+                                      : "bg-amber-50 text-amber-900 border-amber-300"
+                                  }`}
+                                >
+                                  {isVerified ? "✅ Verified" : isReuploadReq ? "⚠️ Re-upload Requested" : "⏳ Pending Audit"}
+                                </span>
+                              </div>
+                              {doc.remarks && (
+                                <div className="text-[11px] text-rose-900 bg-rose-50 p-2 rounded border border-rose-200">
+                                  <strong>Officer Note:</strong> {doc.remarks}
+                                </div>
+                              )}
+                            </div>
+                            {latestVersion && (
+                              <a
+                                href={`http://localhost:4000/api/v1/documents/stream/${latestVersion.fileName}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="px-3 py-1.5 bg-blue-50 text-blue-800 font-bold rounded-lg border border-blue-200 text-xs"
+                              >
+                                👁️ View Scan
+                              </a>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Fee Receipts Card */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 space-y-6">
+                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-700 border-b pb-3">
+                  💳 Application &amp; Tuition Fee Payment Receipts
+                </h3>
+
+                {feeRecords.length > 0 && (
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-bold uppercase text-slate-600">Submitted Fee Payment Receipts</h4>
+                    <div className="space-y-3">
+                      {feeRecords.map((f: any) => (
+                        <div key={f.id} className="p-4 border rounded-xl bg-slate-50 text-xs flex items-center justify-between">
+                          <div>
+                            <span className="font-mono font-bold text-slate-900 text-sm">₹{f.amountPaid}</span>
+                            <span className="ml-2 font-mono text-blue-900 bg-blue-50 px-2 py-0.5 rounded border">
+                              Ref: {f.transactionRefNo}
+                            </span>
+                            <span className="ml-2 text-[10px] font-bold text-slate-500">
+                              ({new Date(f.createdAt).toLocaleDateString()})
+                            </span>
+                            {f.remarks && (
+                              <div className="mt-1 text-rose-900 bg-rose-50 p-1.5 rounded border text-[11px]">
+                                <strong>Accounts Note:</strong> {f.remarks}
+                              </div>
+                            )}
+                          </div>
+                          <a
+                            href={`http://localhost:4000/api/v1/documents/stream/${f.receiptFilePath}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-blue-700 font-bold hover:underline"
+                          >
+                            👁️ View Receipt
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Submit Fee Receipt Form */}
+                <form onSubmit={handleFeeSubmit} className="space-y-4 border-t pt-4">
+                  <h4 className="text-xs font-bold uppercase text-slate-700">+ Submit Payment Receipt</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold uppercase text-slate-600 mb-1">Amount Paid (₹) *</label>
+                      <input
+                        type="number"
+                        value={amountPaid}
+                        onChange={(e) => setAmountPaid(e.target.value)}
+                        placeholder={String(student.program.applicationFee)}
+                        className="w-full px-3 py-2 border rounded-lg text-xs font-bold"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold uppercase text-slate-600 mb-1">Bank / NEFT / UTR Ref # *</label>
+                      <input
+                        type="text"
+                        value={transactionRefNo}
+                        onChange={(e) => setTransactionRefNo(e.target.value)}
+                        placeholder="e.g. UTR987654321"
+                        className="w-full px-3 py-2 border rounded-lg text-xs font-mono"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-600 mb-1">Upload Receipt File *</label>
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      onChange={(e) => setFeeFile(e.target.files ? e.target.files[0] : null)}
+                      className="w-full text-xs text-slate-600 border rounded-lg p-2 bg-slate-50"
+                      required
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={submittingFee}
+                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-lg transition-colors"
+                  >
+                    {submittingFee ? "Submitting..." : "+ Submit Payment Receipt"}
+                  </button>
+                </form>
+              </div>
+            </div>
+          ) : (
+            /* IF FORM IS EDITABLE: STEP-BY-STEP MULTI-SECTION WIZARD WITH PROGRESS BAR */
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 space-y-8">
+              {/* TOP PROGRESS STEPPER BAR */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900">
+                    Application Form &bull; Step {currentStepIndex + 1} of {allWizardSteps.length}
+                  </h3>
+                  <span className="text-xs font-bold text-blue-700 bg-blue-50 px-3 py-1 rounded-full border border-blue-200">
+                    {currentStep.label}
+                  </span>
+                </div>
+
+                {/* Progress Bar Track */}
+                <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden flex">
+                  <div
+                    className="bg-slate-900 h-full transition-all duration-300"
+                    style={{ width: `${((currentStepIndex + 1) / allWizardSteps.length) * 100}%` }}
+                  />
+                </div>
+
+                {/* Stepper Node Items */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2 pt-2">
+                  {allWizardSteps.map((step, idx) => {
+                    const isActive = idx === currentStepIndex;
+                    const isCompleted = idx < currentStepIndex;
+
+                    return (
+                      <button
+                        key={step.id}
+                        onClick={() => setCurrentStepIndex(idx)}
+                        className={`p-2 rounded-xl text-left border transition-all text-xs flex items-center gap-2 ${
+                          isActive
+                            ? "bg-slate-900 text-white border-slate-900 shadow-xs font-bold"
+                            : isCompleted
+                            ? "bg-emerald-50 text-emerald-900 border-emerald-200 font-semibold"
+                            : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                        }`}
+                      >
+                        <span
+                          className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                            isActive
+                              ? "bg-white text-slate-900"
+                              : isCompleted
+                              ? "bg-emerald-600 text-white"
+                              : "bg-slate-200 text-slate-600"
+                          }`}
+                        >
+                          {isCompleted ? "✓" : idx + 1}
+                        </span>
+                        <span className="truncate text-[11px]">{step.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* STEP CONTENT SWITCHER */}
+              <div className="pt-4 border-t">
+                {/* 1. DYNAMIC FORM SECTION STEPS */}
+                {currentStep.type === "form_section" && (
+                  <div className="space-y-6">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-b pb-2 flex items-center gap-2">
+                      <span>📁</span> Section: {currentStep.label}
                     </h4>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {secFields.map((f: any) => {
+                      {groupedSections[currentStep.label]?.map((f: any) => {
                         const valObj = formData[f.fieldKey] || {};
                         const isRequired = f.validation?.required;
 
@@ -314,7 +627,6 @@ export default function StudentApplicationPage() {
                                   </span>
                                 )}
                               </div>
-
                               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                 <div>
                                   <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Marks Secured *</label>
@@ -323,7 +635,7 @@ export default function StudentApplicationPage() {
                                     value={secured}
                                     onChange={(e) => handleMarksChange(f.fieldKey, "secured", e.target.value)}
                                     placeholder="e.g. 540"
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold"
+                                    className="w-full px-3 py-2 border rounded-lg text-xs font-bold"
                                   />
                                 </div>
                                 <div>
@@ -333,7 +645,7 @@ export default function StudentApplicationPage() {
                                     value={total}
                                     onChange={(e) => handleMarksChange(f.fieldKey, "total", e.target.value)}
                                     placeholder="e.g. 600"
-                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold"
+                                    className="w-full px-3 py-2 border rounded-lg text-xs font-bold"
                                   />
                                 </div>
                                 <div>
@@ -342,8 +654,7 @@ export default function StudentApplicationPage() {
                                     type="text"
                                     value={pct ? `${pct}%` : ""}
                                     readOnly
-                                    placeholder="Auto Calculated"
-                                    className="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-xs font-mono font-bold text-blue-900"
+                                    className="w-full px-3 py-2 bg-slate-100 border rounded-lg text-xs font-mono font-bold text-blue-900"
                                   />
                                 </div>
                               </div>
@@ -451,263 +762,189 @@ export default function StudentApplicationPage() {
                       })}
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
+                )}
 
-            <div className="flex justify-between items-center pt-4 border-t">
-              <button
-                onClick={handleSaveDraft}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-lg transition-colors"
-              >
-                💾 Save Draft
-              </button>
-              <button
-                onClick={handleSubmitApplication}
-                className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold uppercase tracking-wider rounded-lg shadow-sm transition-all"
-              >
-                Submit Application
-              </button>
-            </div>
-          </div>
+                {/* 2. DOCUMENT UPLOADS STEP */}
+                {currentStep.type === "documents" && (
+                  <div className="space-y-6">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-b pb-2 flex items-center gap-2">
+                      <span>📁</span> Required Certificate Scans Upload ({docRequirements.length} Rules)
+                    </h4>
 
-          {/* DOCUMENT UPLOADS CARD (CONFIGURED BY ADMIN IN FORM BUILDER) */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 space-y-6">
-            <div>
-              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-700 border-b pb-3">
-                📁 Required Certificates &amp; Document Uploads ({docRequirements.length} Rules)
-              </h3>
-              <p className="text-xs text-slate-500 mt-1">
-                Upload clear scans of your required certificates. Scans will be verified by the Admissions Office.
-              </p>
-            </div>
+                    {docRequirements.length === 0 ? (
+                      <div className="p-6 text-center text-xs text-slate-400 border-2 border-dashed rounded-xl">
+                        No document upload rules required for this program.
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {docRequirements.map((d: any) => {
+                          const existingDoc = uploadedDocuments.find((doc: any) => doc.documentType === d.type);
+                          const latestVersion = existingDoc?.versions?.[0];
+                          const isVerified = existingDoc?.status === "VERIFIED";
+                          const isReuploadReq = existingDoc?.status === "REJECTED_REUPLOAD_REQUIRED";
 
-            {docRequirements.length === 0 ? (
-              <div className="p-6 text-center text-xs text-slate-400 border-2 border-dashed rounded-xl">
-                No document upload rules required for this program.
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {docRequirements.map((d: any) => {
-                  const existingDoc = uploadedDocuments.find((doc: any) => doc.documentType === d.type);
-                  const latestVersion = existingDoc?.versions?.[0];
-                  const isVerified = existingDoc?.status === "VERIFIED";
-                  const isReuploadReq = existingDoc?.status === "REJECTED_REUPLOAD_REQUIRED";
-
-                  return (
-                    <div
-                      key={d.id || d.type}
-                      className={`p-4 border rounded-xl space-y-3 transition-colors ${
-                        isReuploadReq ? "bg-rose-50/70 border-rose-300" : "bg-slate-50/50 border-slate-200"
-                      }`}
-                    >
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-2">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm">📄</span>
-                            <h4 className="text-xs font-bold text-slate-900">{d.label}</h4>
-                            <span
-                              className={`px-2 py-0.5 text-[10px] font-bold rounded ${
-                                d.required ? "bg-red-100 text-red-800" : "bg-slate-100 text-slate-600"
+                          return (
+                            <div
+                              key={d.id || d.type}
+                              className={`p-4 border rounded-xl space-y-3 ${
+                                isReuploadReq ? "bg-rose-50 border-rose-300" : "bg-slate-50 border-slate-200"
                               }`}
                             >
-                              {d.required ? "Mandatory Upload" : "Optional"}
-                            </span>
-                          </div>
-                          <span className="text-[11px] font-mono text-slate-400">Key: {d.type}</span>
-                        </div>
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-2">
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm">📄</span>
+                                    <h4 className="text-xs font-bold text-slate-900">{d.label}</h4>
+                                    <span
+                                      className={`px-2 py-0.5 text-[10px] font-bold rounded ${
+                                        d.required ? "bg-red-100 text-red-800" : "bg-slate-100 text-slate-600"
+                                      }`}
+                                    >
+                                      {d.required ? "Mandatory Upload" : "Optional"}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div>
+                                  {isVerified ? (
+                                    <span className="px-3 py-1 bg-emerald-100 text-emerald-900 font-bold text-xs rounded-full border border-emerald-300">
+                                      ✅ Verified
+                                    </span>
+                                  ) : isReuploadReq ? (
+                                    <span className="px-3 py-1 bg-rose-100 text-rose-900 font-bold text-xs rounded-full border border-rose-300">
+                                      ⚠️ Re-upload Requested
+                                    </span>
+                                  ) : latestVersion ? (
+                                    <span className="px-3 py-1 bg-blue-100 text-blue-900 font-bold text-xs rounded-full border border-blue-300">
+                                      ⏳ Pending Audit
+                                    </span>
+                                  ) : (
+                                    <span className="px-3 py-1 bg-amber-100 text-amber-900 font-bold text-xs rounded-full border border-amber-300">
+                                      ⏳ Upload Pending
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
 
-                        <div>
-                          {isVerified ? (
-                            <span className="px-3 py-1 bg-emerald-100 text-emerald-900 font-bold text-xs rounded-full border border-emerald-300 inline-flex items-center gap-1">
-                              <span>✅ Certificate Verified</span>
-                            </span>
-                          ) : isReuploadReq ? (
-                            <span className="px-3 py-1 bg-rose-100 text-rose-900 font-bold text-xs rounded-full border border-rose-300 inline-flex items-center gap-1">
-                              <span>⚠️ Re-upload Requested</span>
-                            </span>
-                          ) : latestVersion ? (
-                            <span className="px-3 py-1 bg-blue-100 text-blue-900 font-bold text-xs rounded-full border border-blue-300 inline-flex items-center gap-1">
-                              <span>⏳ Pending Verification</span>
-                            </span>
-                          ) : (
-                            <span className="px-3 py-1 bg-amber-100 text-amber-900 font-bold text-xs rounded-full border border-amber-300 inline-flex items-center gap-1">
-                              <span>⏳ Upload Pending</span>
-                            </span>
-                          )}
-                        </div>
+                              {existingDoc?.remarks && (
+                                <div className="p-3 bg-rose-100/80 border border-rose-300 rounded-lg text-xs text-rose-900">
+                                  <strong>⚠️ Officer Note:</strong> {existingDoc.remarks}
+                                </div>
+                              )}
+
+                              <div className="flex flex-col sm:flex-row items-center gap-3">
+                                <input
+                                  type="file"
+                                  accept=".pdf,.jpg,.jpeg,.png"
+                                  onChange={(e) => {
+                                    const f = e.target.files ? e.target.files[0] : null;
+                                    setSelectedDocFiles((prev) => ({ ...prev, [d.type]: f }));
+                                  }}
+                                  className="flex-1 text-xs border rounded-lg p-2 bg-white"
+                                />
+                                <button
+                                  onClick={() => handleDocumentFileUpload(d.type)}
+                                  disabled={uploadingDocType === d.type || !selectedDocFiles[d.type]}
+                                  className="px-4 py-2 bg-slate-900 text-white font-bold text-xs rounded-lg hover:bg-slate-800 transition-colors whitespace-nowrap"
+                                >
+                                  {uploadingDocType === d.type ? "Uploading..." : "📤 Upload Scan"}
+                                </button>
+                              </div>
+
+                              {latestVersion && (
+                                <div className="text-[11px] text-slate-600 bg-white p-2.5 border rounded-lg flex items-center justify-between">
+                                  <span>Uploaded: {latestVersion.fileName} (v{latestVersion.versionNumber})</span>
+                                  <a
+                                    href={`http://localhost:4000/api/v1/documents/stream/${latestVersion.fileName}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-blue-700 font-bold hover:underline"
+                                  >
+                                    👁️ View Scan
+                                  </a>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
+                    )}
+                  </div>
+                )}
 
-                      {/* Officer Re-upload Instructions */}
-                      {existingDoc?.remarks && (
-                        <div className="p-3 bg-rose-100/80 border border-rose-300 rounded-lg text-xs text-rose-900 font-medium">
-                          <strong>⚠️ Verification Officer Note:</strong> {existingDoc.remarks}
-                        </div>
-                      )}
+                {/* 3. AADHAAR CONSENT & DECLARATION STEP */}
+                {currentStep.type === "consent" && (
+                  <div className="space-y-6">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-b pb-2 flex items-center gap-2">
+                      <span>🛡️</span> Final Step: Aadhaar Consent &amp; Verification Declaration
+                    </h4>
 
-                      {/* File picker & Action */}
-                      <div className="flex flex-col sm:flex-row items-center gap-3">
-                        <input
-                          type="file"
-                          accept=".pdf,.jpg,.jpeg,.png"
-                          onChange={(e) => {
-                            const f = e.target.files ? e.target.files[0] : null;
-                            setSelectedDocFiles((prev) => ({ ...prev, [d.type]: f }));
-                          }}
-                          className="flex-1 text-xs text-slate-600 border rounded-lg p-2 bg-white"
-                        />
-                        <button
-                          onClick={() => handleDocumentFileUpload(d.type)}
-                          disabled={uploadingDocType === d.type || !selectedDocFiles[d.type]}
-                          className="px-4 py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold text-xs rounded-lg transition-colors whitespace-nowrap"
-                        >
-                          {uploadingDocType === d.type ? "Uploading Scan..." : "📤 Upload Document Scan"}
-                        </button>
+                    <div className="p-6 bg-slate-50 border border-slate-200 rounded-2xl space-y-4 text-xs">
+                      <h5 className="font-bold text-slate-900 uppercase">Information Accuracy &amp; PII Consent Declaration</h5>
+                      <p className="text-slate-600 leading-relaxed">
+                        By submitting this application, I hereby declare that all information, mark percentages, personal details, and certificate scans provided herein are authentic, original, and true to the best of my knowledge.
+                      </p>
+                      <p className="text-slate-600 leading-relaxed">
+                        <strong>Aadhaar Verification Consent:</strong> I voluntarily consent to provide my 12-digit Aadhaar number and uploaded document scans to <strong>Gayatri Vidya Parishad Institution of Higher Learning (GVPIHLR)</strong> for student identity verification, admission processing, and audit compliance under AES-256 encrypted security protocols.
+                      </p>
+
+                      <div className="pt-2 border-t">
+                        <label className="flex items-start gap-3 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={aadhaarConsent}
+                            onChange={(e) => setAadhaarConsent(e.target.checked)}
+                            className="w-5 h-5 rounded text-slate-900 border-slate-300 mt-0.5"
+                          />
+                          <span className="font-bold text-slate-900 leading-tight">
+                            I agree to the Aadhaar Consent &amp; Information Accuracy Declaration. Lock and submit my application. *
+                          </span>
+                        </label>
                       </div>
-
-                      {/* Uploaded metadata */}
-                      {latestVersion && (
-                        <div className="text-[11px] text-slate-600 bg-white p-2.5 border rounded-lg flex items-center justify-between">
-                          <div>
-                            <span className="font-semibold text-slate-800">Uploaded File:</span> {latestVersion.fileName} (v{latestVersion.versionNumber})
-                          </div>
-                          <a
-                            href={`http://localhost:4000/api/v1/documents/stream/${latestVersion.fileName}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-blue-700 font-bold hover:underline"
-                          >
-                            👁️ View Document Scan
-                          </a>
-                        </div>
-                      )}
                     </div>
-                  );
-                })}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          {/* MULTI FEE RECEIPT SUBMISSION & HISTORY CARD */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 space-y-6">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-700 border-b pb-3">
-              💳 Application &amp; Tuition Fee Payment Receipts (Program Fee: ₹{student.program.applicationFee})
-            </h3>
+              {/* BOTTOM WIZARD CONTROLS */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t">
+                <div className="flex items-center gap-3 w-full sm:w-auto">
+                  {currentStepIndex > 0 && (
+                    <button
+                      onClick={() => setCurrentStepIndex((prev) => prev - 1)}
+                      className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition-colors"
+                    >
+                      ← Previous Section
+                    </button>
+                  )}
+                  <button
+                    onClick={handleSaveDraft}
+                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition-colors"
+                  >
+                    💾 Save Draft
+                  </button>
+                </div>
 
-            {/* Fee Receipts History List */}
-            {feeRecords.length > 0 && (
-              <div className="space-y-3">
-                <h4 className="text-xs font-bold uppercase text-slate-600">Submitted Fee Receipts History</h4>
-                <div className="space-y-3">
-                  {feeRecords.map((f: any) => {
-                    const isVerified = f.status === "VERIFIED";
-                    const isReuploadReq = f.status === "REJECTED_REUPLOAD_REQUIRED";
-
-                    return (
-                      <div
-                        key={f.id}
-                        className={`p-4 border rounded-xl text-xs space-y-2 ${
-                          isReuploadReq ? "bg-rose-50 border-rose-300" : "bg-slate-50 border-slate-200"
-                        }`}
-                      >
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-2">
-                          <div className="flex items-center gap-3">
-                            <span className="font-mono font-bold text-slate-900 text-sm">₹{f.amountPaid}</span>
-                            <span className="font-mono text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                              Ref: {f.transactionRefNo}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={`px-2.5 py-0.5 text-[10px] font-bold rounded-full border ${
-                                isVerified
-                                  ? "bg-emerald-100 text-emerald-900 border-emerald-300"
-                                  : isReuploadReq
-                                  ? "bg-rose-100 text-rose-900 border-rose-300"
-                                  : "bg-amber-100 text-amber-900 border-amber-300"
-                              }`}
-                            >
-                              {isVerified ? "✅ Fee Cleared" : isReuploadReq ? "⚠️ Re-upload Requested" : "⏳ Pending Central Verification"}
-                            </span>
-
-                            <a
-                              href={`http://localhost:4000/api/v1/documents/stream/${f.receiptFilePath}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-blue-700 font-bold hover:underline"
-                            >
-                              👁️ View Receipt
-                            </a>
-                          </div>
-                        </div>
-
-                        {f.remarks && (
-                          <div className="p-2 bg-rose-100/80 border border-rose-300 rounded text-rose-900 font-medium">
-                            <strong>Central Accounts Officer Note:</strong> {f.remarks}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+                  {currentStepIndex < allWizardSteps.length - 1 ? (
+                    <button
+                      onClick={() => setCurrentStepIndex((prev) => prev + 1)}
+                      className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs transition-colors"
+                    >
+                      Next Section →
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleSubmitApplication}
+                      disabled={actionLoading || !aadhaarConsent}
+                      className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-md transition-all"
+                    >
+                      {actionLoading ? "Submitting & Locking..." : "🚀 Submit Application & Lock Form"}
+                    </button>
+                  )}
                 </div>
               </div>
-            )}
-
-            {/* Submit New Payment Receipt Form */}
-            <form onSubmit={handleFeeSubmit} className="space-y-4 border-t pt-4">
-              <h4 className="text-xs font-bold uppercase text-slate-700">+ Submit New / Additional Payment Receipt</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-600 mb-1">
-                    Amount Paid (₹) *
-                  </label>
-                  <input
-                    type="number"
-                    value={amountPaid}
-                    onChange={(e) => setAmountPaid(e.target.value)}
-                    placeholder={String(student.program.applicationFee)}
-                    className="w-full px-3 py-2 border rounded-lg text-xs font-bold"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-600 mb-1">
-                    Bank / DD / NEFT Ref Number *
-                  </label>
-                  <input
-                    type="text"
-                    value={transactionRefNo}
-                    onChange={(e) => setTransactionRefNo(e.target.value)}
-                    placeholder="e.g. TXN9876543210"
-                    className="w-full px-3 py-2 border rounded-lg text-xs font-mono"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold uppercase text-slate-600 mb-1">
-                  Upload Payment Receipt (PDF/JPG/PNG max 5MB) *
-                </label>
-                <input
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  onChange={(e) => setFeeFile(e.target.files ? e.target.files[0] : null)}
-                  className="w-full text-xs text-slate-600 border rounded-lg p-2 bg-slate-50"
-                  required
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={submittingFee}
-                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-lg transition-colors"
-              >
-                {submittingFee ? "Submitting Fee Payment Receipt..." : "+ Submit Payment Receipt"}
-              </button>
-            </form>
-          </div>
+            </div>
+          )}
         </main>
       </div>
 
