@@ -12,6 +12,7 @@ export default function FinancePage() {
   const [feeRecords, setFeeRecords] = useState<any[]>([]);
   const [schools, setSchools] = useState<any[]>([]);
   const [selectedSchoolId, setSelectedSchoolId] = useState("");
+  const [selectedProgramId, setSelectedProgramId] = useState("");
   const [remarksMap, setRemarksMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
@@ -34,7 +35,7 @@ export default function FinancePage() {
 
   useEffect(() => {
     loadFees();
-  }, [selectedSchoolId]);
+  }, [selectedSchoolId, selectedProgramId]);
 
   const loadUserAndSchools = async () => {
     try {
@@ -53,9 +54,12 @@ export default function FinancePage() {
   const loadFees = async () => {
     setLoading(true);
     try {
-      let query = "";
-      if (selectedSchoolId) query = `?schoolId=${selectedSchoolId}`;
-      const res = await fetchApi(`/fees${query}`);
+      const queryParams = new URLSearchParams();
+      if (selectedSchoolId) queryParams.append("schoolId", selectedSchoolId);
+      if (selectedProgramId) queryParams.append("programId", selectedProgramId);
+
+      const queryString = queryParams.toString() ? `?${queryParams.toString()}` : "";
+      const res = await fetchApi(`/fees${queryString}`);
       if (res.success) {
         setFeeRecords(res.data);
       }
@@ -109,6 +113,11 @@ export default function FinancePage() {
     }
   };
 
+  const selectedSchoolObj = schools.find((s) => s.id === selectedSchoolId);
+  const availablePrograms = selectedSchoolId
+    ? selectedSchoolObj?.programs || []
+    : schools.flatMap((s) => s.programs || []);
+
   const userRole = currentUser?.role?.name || "CENTRAL_ACCOUNTS";
   const userEmail = currentUser?.email || "accounts@gvpihlr.edu.in";
 
@@ -119,7 +128,7 @@ export default function FinancePage() {
         <Sidebar userRole={userRole} />
         <main className="flex-1 p-8 max-w-7xl space-y-6">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 space-y-6">
-            <div className="border-b border-slate-100 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="border-b border-slate-100 pb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <h2 className="text-xl font-bold text-slate-900">Central Accounts Fee Clearance Portal</h2>
                 <p className="text-xs text-slate-500 mt-1">
@@ -127,19 +136,42 @@ export default function FinancePage() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-3">
-                <select
-                  value={selectedSchoolId}
-                  onChange={(e) => setSelectedSchoolId(e.target.value)}
-                  className="px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-900"
-                >
-                  <option value="">All Schools (Global Oversight)</option>
-                  {schools.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.code})
-                    </option>
-                  ))}
-                </select>
+              {/* SCHOOL AND PROGRAM FILTERS */}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-bold text-slate-700 whitespace-nowrap">🏫 School:</label>
+                  <select
+                    value={selectedSchoolId}
+                    onChange={(e) => {
+                      setSelectedSchoolId(e.target.value);
+                      setSelectedProgramId("");
+                    }}
+                    className="px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-900"
+                  >
+                    <option value="">All Schools (Global Oversight)</option>
+                    {schools.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-bold text-slate-700 whitespace-nowrap">🎓 Program / Dept:</label>
+                  <select
+                    value={selectedProgramId}
+                    onChange={(e) => setSelectedProgramId(e.target.value)}
+                    className="px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-900"
+                  >
+                    <option value="">All Programs / Depts</option>
+                    {availablePrograms.map((p: any) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
                 <button
                   onClick={loadFees}
@@ -154,7 +186,7 @@ export default function FinancePage() {
               <GVPLogoSpinner label="Loading Central Accounts Fee Roster..." />
             ) : feeRecords.length === 0 ? (
               <div className="p-8 text-center text-xs text-slate-400 border-2 border-dashed rounded-xl">
-                No fee payment records submitted yet for the selected filter.
+                No fee payment records submitted yet for the selected School / Program filter.
               </div>
             ) : (
               <div className="space-y-4">
