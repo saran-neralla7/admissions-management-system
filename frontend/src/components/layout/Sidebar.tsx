@@ -37,12 +37,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ userRole }) => {
         ];
       case "SCHOOL_ADMIN":
         return [
-          { label: "Dashboard", href: "/dashboard", icon: "📊" },
-          { label: "Certificate Verification", href: "/verification", icon: "🔍" },
-          { label: "Register New Student", href: "/students/create", icon: "➕" },
-          { label: "Student Roster", href: "/students", icon: "👥" },
           { label: "Form & Doc Builder", href: "/admin/form-builder", icon: "⚙️" },
+          { label: "Student Roster", href: "/students", icon: "👥" },
         ];
+      case "CENTRAL_OFFICE":
       case "OFFICE_USER":
       case "VERIFICATION_OFFICER":
         return [
@@ -50,6 +48,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ userRole }) => {
           { label: "Register New Student", href: "/students/create", icon: "➕" },
         ];
       case "CENTRAL_ACCOUNTS":
+      case "SCHOOL_ACCOUNTS":
       case "FINANCE_OFFICER":
         return [
           { label: "Fee Clearance Portal", href: "/finance", icon: "💳" },

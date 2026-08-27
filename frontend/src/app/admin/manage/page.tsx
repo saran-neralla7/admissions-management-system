@@ -39,6 +39,8 @@ export default function AdminManagementPage() {
   const [userRole, setUserRole] = useState("SCHOOL_ADMIN");
   const [userSchoolId, setUserSchoolId] = useState("");
   const [userPass, setUserPass] = useState("");
+  const [userFilterCategory, setUserFilterCategory] = useState<"ALL" | "STAFF" | "STUDENT">("STAFF");
+  const [userRoleFilter, setUserRoleFilter] = useState<string>("");
 
   // Academic Cycle Form
   const [cycleProgId, setCycleProgId] = useState("");
@@ -849,10 +851,12 @@ export default function AdminManagementPage() {
                           onChange={(e) => setUserRole(e.target.value)}
                           className="w-full px-3 py-2 border rounded-lg text-xs bg-white font-bold"
                         >
-                          <option value="SCHOOL_ADMIN">School Admin</option>
-                          <option value="OFFICE_USER">School Office User</option>
-                          <option value="CENTRAL_ACCOUNTS">Central Accounts User</option>
-                          <option value="SUPER_ADMIN">Super Admin</option>
+                          <option value="SCHOOL_ADMIN">School Admin (Form Builder & Roster for School)</option>
+                          <option value="CENTRAL_OFFICE">Central Office (Verifies Certificates Across All Schools)</option>
+                          <option value="OFFICE_USER">School Office User (Single School Verification)</option>
+                          <option value="CENTRAL_ACCOUNTS">Central Accounts (Fee Clearance Across All Schools)</option>
+                          <option value="SCHOOL_ACCOUNTS">School Accounts (Single School Fee Clearance)</option>
+                          <option value="SUPER_ADMIN">Super Admin (Full University System Control)</option>
                         </select>
                       </div>
                       <div>
@@ -862,7 +866,7 @@ export default function AdminManagementPage() {
                           onChange={(e) => setUserSchoolId(e.target.value)}
                           className="w-full px-3 py-2 border rounded-lg text-xs bg-white"
                         >
-                          <option value="">None / All Schools (Super Admin)</option>
+                          <option value="">None / All Schools (Central Roles / Super Admin)</option>
                           {schools.map((s) => (
                             <option key={s.id} value={s.id}>
                               {s.name} ({s.code})
@@ -876,68 +880,137 @@ export default function AdminManagementPage() {
                     </button>
                   </form>
 
+                  {/* Filter & Separation Bar */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-700">Filter Category:</span>
+                      <div className="inline-flex rounded-lg border border-slate-300 bg-white p-1">
+                        <button
+                          type="button"
+                          onClick={() => setUserFilterCategory("STAFF")}
+                          className={`px-3 py-1 text-xs font-bold rounded-md transition-colors ${
+                            userFilterCategory === "STAFF"
+                              ? "bg-slate-900 text-white shadow-2xs"
+                              : "text-slate-600 hover:text-slate-900"
+                          }`}
+                        >
+                          💼 Staff Accounts
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setUserFilterCategory("STUDENT")}
+                          className={`px-3 py-1 text-xs font-bold rounded-md transition-colors ${
+                            userFilterCategory === "STUDENT"
+                              ? "bg-slate-900 text-white shadow-2xs"
+                              : "text-slate-600 hover:text-slate-900"
+                          }`}
+                        >
+                          🎓 Student Accounts
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setUserFilterCategory("ALL")}
+                          className={`px-3 py-1 text-xs font-bold rounded-md transition-colors ${
+                            userFilterCategory === "ALL"
+                              ? "bg-slate-900 text-white shadow-2xs"
+                              : "text-slate-600 hover:text-slate-900"
+                          }`}
+                        >
+                          🌐 All Accounts
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-bold text-slate-700">Filter Role:</label>
+                      <select
+                        value={userRoleFilter}
+                        onChange={(e) => setUserRoleFilter(e.target.value)}
+                        className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-900"
+                      >
+                        <option value="">All Roles</option>
+                        <option value="SUPER_ADMIN">Super Admin</option>
+                        <option value="CENTRAL_OFFICE">Central Office</option>
+                        <option value="OFFICE_USER">School Office</option>
+                        <option value="CENTRAL_ACCOUNTS">Central Accounts</option>
+                        <option value="SCHOOL_ACCOUNTS">School Accounts</option>
+                        <option value="SCHOOL_ADMIN">School Admin</option>
+                        <option value="STUDENT">Student</option>
+                      </select>
+                    </div>
+                  </div>
+
                   <div className="space-y-3">
-                    {users.map((u) => (
-                      <div key={u.id} className="p-4 border rounded-xl bg-white flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        {editingUser?.id === u.id ? (
-                          <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
-                            <input
-                              type="email"
-                              value={editingUser.email}
-                              onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })}
-                              className="px-2.5 py-1 border text-xs rounded"
-                            />
-                            <select
-                              value={editingUser.roleName}
-                              onChange={(e) => setEditingUser({ ...editingUser, roleName: e.target.value })}
-                              className="px-2 py-1 border text-xs rounded"
-                            >
-                              <option value="SCHOOL_ADMIN">School Admin</option>
-                              <option value="OFFICE_USER">School Office User</option>
-                              <option value="CENTRAL_ACCOUNTS">Central Accounts</option>
-                              <option value="SUPER_ADMIN">Super Admin</option>
-                            </select>
-                            <div className="flex gap-2 justify-end">
-                              <button
-                                onClick={() => handleUpdateUser(u.id)}
-                                className="px-3 py-1 bg-emerald-600 text-white text-xs font-bold rounded"
+                    {users
+                      .filter((u) => {
+                        if (userFilterCategory === "STAFF" && u.roleName === "STUDENT") return false;
+                        if (userFilterCategory === "STUDENT" && u.roleName !== "STUDENT") return false;
+                        if (userRoleFilter && u.roleName !== userRoleFilter) return false;
+                        return true;
+                      })
+                      .map((u) => (
+                        <div key={u.id} className="p-4 border rounded-xl bg-white flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          {editingUser?.id === u.id ? (
+                            <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
+                              <input
+                                type="email"
+                                value={editingUser.email}
+                                onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })}
+                                className="px-2.5 py-1 border text-xs rounded"
+                              />
+                              <select
+                                value={editingUser.roleName}
+                                onChange={(e) => setEditingUser({ ...editingUser, roleName: e.target.value })}
+                                className="px-2 py-1 border text-xs rounded font-bold"
                               >
-                                Save User
-                              </button>
-                              <button
-                                onClick={() => setEditingUser(null)}
-                                className="px-3 py-1 bg-slate-200 text-slate-700 text-xs font-bold rounded"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            <div>
-                              <h4 className="text-sm font-bold text-slate-900">{u.email}</h4>
-                              <div className="text-xs text-slate-500 mt-0.5">
-                                Role: <span className="font-bold text-blue-900">{u.roleName}</span> | School: {u.schoolName}
+                                <option value="SCHOOL_ADMIN">School Admin</option>
+                                <option value="CENTRAL_OFFICE">Central Office</option>
+                                <option value="OFFICE_USER">School Office User</option>
+                                <option value="CENTRAL_ACCOUNTS">Central Accounts</option>
+                                <option value="SCHOOL_ACCOUNTS">School Accounts</option>
+                                <option value="SUPER_ADMIN">Super Admin</option>
+                              </select>
+                              <div className="flex gap-2 justify-end">
+                                <button
+                                  onClick={() => handleUpdateUser(u.id)}
+                                  className="px-3 py-1 bg-emerald-600 text-white text-xs font-bold rounded"
+                                >
+                                  Save User
+                                </button>
+                                <button
+                                  onClick={() => setEditingUser(null)}
+                                  className="px-3 py-1 bg-slate-200 text-slate-700 text-xs font-bold rounded"
+                                >
+                                  Cancel
+                                </button>
                               </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => setEditingUser({ ...u, roleName: u.roleName, schoolId: u.schoolId || "" })}
-                                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg"
-                              >
-                                ✏️ Edit User
-                              </button>
-                              <button
-                                onClick={() => handleDeleteUser(u.id, u.email)}
-                                className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold rounded-lg"
-                              >
-                                🗑️ Delete User
-                              </button>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    ))}
+                          ) : (
+                            <>
+                              <div>
+                                <h4 className="text-sm font-bold text-slate-900">{u.email}</h4>
+                                <div className="text-xs text-slate-500 mt-0.5">
+                                  Role: <span className="font-bold text-blue-900">{u.roleName}</span> | School: {u.schoolName}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => setEditingUser({ ...u, roleName: u.roleName, schoolId: u.schoolId || "" })}
+                                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg"
+                                >
+                                  ✏️ Edit User
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteUser(u.id, u.email)}
+                                  className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold rounded-lg"
+                                >
+                                  🗑️ Delete User
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ))}
                   </div>
                 </div>
               )}

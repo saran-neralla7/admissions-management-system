@@ -23,18 +23,19 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <link rel="icon" href="/gvp-logo.png" type="image/png" sizes="any" />
+        <link rel="icon" href="/gvp-logo.png" type="image/png" />
+        <link rel="shortcut icon" href="/gvp-logo.png" type="image/png" />
         <link rel="apple-touch-icon" href="/gvp-logo.png" />
       </head>
       <body className="antialiased bg-slate-100 text-slate-900 relative min-h-screen">
-        {/* GLOBAL GVP LOGO WATERMARK BACKGROUND */}
-        <div className="fixed inset-0 pointer-events-none z-0 flex items-center justify-center overflow-hidden opacity-[0.035] select-none">
+        {/* GLOBAL GVP LOGO WATERMARK BACKGROUND - ELEGANT VISIBLE WATERMARK */}
+        <div className="fixed inset-0 pointer-events-none z-0 flex items-center justify-center overflow-hidden select-none">
           <Image
             src="/gvp-logo.png"
-            alt="GVP Background Watermark"
-            width={600}
-            height={600}
-            className="object-contain grayscale brightness-50"
+            alt="GVP Watermark Logo"
+            width={550}
+            height={550}
+            className="object-contain opacity-[0.12] grayscale-20 brightness-95"
             priority
           />
         </div>

@@ -120,6 +120,7 @@ export default function FinancePage() {
 
   const userRole = currentUser?.role?.name || "CENTRAL_ACCOUNTS";
   const userEmail = currentUser?.email || "accounts@gvpihlr.edu.in";
+  const isGlobalAccounts = userRole === "SUPER_ADMIN" || userRole === "CENTRAL_ACCOUNTS";
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
@@ -130,7 +131,7 @@ export default function FinancePage() {
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 space-y-6">
             <div className="border-b border-slate-100 pb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <h2 className="text-xl font-bold text-slate-900">Central Accounts Fee Clearance Portal</h2>
+                <h2 className="text-xl font-bold text-slate-900">Central &amp; School Accounts Fee Clearance Portal</h2>
                 <p className="text-xs text-slate-500 mt-1">
                   Verify student bank transaction ref numbers, amount paid, and view uploaded payment receipt scans. Request receipt re-uploads if needed.
                 </p>
@@ -138,24 +139,30 @@ export default function FinancePage() {
 
               {/* SCHOOL AND PROGRAM FILTERS */}
               <div className="flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <label className="text-xs font-bold text-slate-700 whitespace-nowrap">🏫 School:</label>
-                  <select
-                    value={selectedSchoolId}
-                    onChange={(e) => {
-                      setSelectedSchoolId(e.target.value);
-                      setSelectedProgramId("");
-                    }}
-                    className="px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-900"
-                  >
-                    <option value="">All Schools (Global Oversight)</option>
-                    {schools.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} ({s.code})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {isGlobalAccounts ? (
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs font-bold text-slate-700 whitespace-nowrap">🏫 School:</label>
+                    <select
+                      value={selectedSchoolId}
+                      onChange={(e) => {
+                        setSelectedSchoolId(e.target.value);
+                        setSelectedProgramId("");
+                      }}
+                      className="px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-900"
+                    >
+                      <option value="">All Schools (Global Central Accounts)</option>
+                      {schools.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} ({s.code})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <span className="px-3 py-2 bg-slate-100 text-slate-800 font-bold text-xs rounded-lg border border-slate-300">
+                    🏫 Assigned School Accounts Workspace
+                  </span>
+                )}
 
                 <div className="flex items-center gap-2">
                   <label className="text-xs font-bold text-slate-700 whitespace-nowrap">🎓 Program / Dept:</label>
@@ -183,7 +190,7 @@ export default function FinancePage() {
             </div>
 
             {loading ? (
-              <GVPLogoSpinner label="Loading Central Accounts Fee Roster..." />
+              <GVPLogoSpinner label="Loading Fee Roster..." />
             ) : feeRecords.length === 0 ? (
               <div className="p-8 text-center text-xs text-slate-400 border-2 border-dashed rounded-xl">
                 No fee payment records submitted yet for the selected School / Program filter.

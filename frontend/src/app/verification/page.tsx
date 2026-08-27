@@ -117,6 +117,7 @@ export default function VerificationPage() {
 
   const userRole = currentUser?.role?.name || "OFFICE_USER";
   const userEmail = currentUser?.email || "office@gvpihlr.edu.in";
+  const isGlobalOffice = userRole === "SUPER_ADMIN" || userRole === "CENTRAL_OFFICE";
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
@@ -129,30 +130,36 @@ export default function VerificationPage() {
               <div>
                 <h2 className="text-xl font-bold text-slate-900">Document Verification Workspace</h2>
                 <p className="text-xs text-slate-500 mt-1">
-                  Filter by School &amp; Program, audit uploaded certificates, check dynamic form responses, and request certificate re-uploads.
+                  Audit uploaded certificates, check dynamic form responses, and request certificate re-uploads.
                 </p>
               </div>
 
               {/* SCHOOL AND PROGRAM FILTERS */}
               <div className="flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <label className="text-xs font-bold text-slate-700 whitespace-nowrap">🏫 School:</label>
-                  <select
-                    value={selectedSchoolId}
-                    onChange={(e) => {
-                      setSelectedSchoolId(e.target.value);
-                      setSelectedProgramId("");
-                    }}
-                    className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-900"
-                  >
-                    <option value="">All Schools</option>
-                    {schools.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} ({s.code})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {isGlobalOffice ? (
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs font-bold text-slate-700 whitespace-nowrap">🏫 School:</label>
+                    <select
+                      value={selectedSchoolId}
+                      onChange={(e) => {
+                        setSelectedSchoolId(e.target.value);
+                        setSelectedProgramId("");
+                      }}
+                      className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-900"
+                    >
+                      <option value="">All Schools (Central Office)</option>
+                      {schools.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} ({s.code})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <span className="px-3 py-1.5 bg-slate-100 text-slate-800 font-bold text-xs rounded-lg border border-slate-300">
+                    🏫 Assigned School Workspace
+                  </span>
+                )}
 
                 <div className="flex items-center gap-2">
                   <label className="text-xs font-bold text-slate-700 whitespace-nowrap">🎓 Program:</label>
