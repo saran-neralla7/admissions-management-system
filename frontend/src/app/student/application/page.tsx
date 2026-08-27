@@ -415,6 +415,8 @@ export default function StudentApplicationPage() {
                     <div className="space-y-3">
                       {uploadedDocuments.map((doc: any) => {
                         const latestVersion = doc.versions?.[0];
+                        const activeFilePath = latestVersion?.filePath || doc.filePath;
+                        const versionNum = latestVersion?.versionNumber || 1;
                         const isVerified = doc.status === "VERIFIED";
                         const isReuploadReq = doc.status === "REJECTED_REUPLOAD_REQUIRED";
 
@@ -435,15 +437,20 @@ export default function StudentApplicationPage() {
                                   {isVerified ? "✅ Verified" : isReuploadReq ? "⚠️ Re-upload Requested" : "⏳ Pending Audit"}
                                 </span>
                               </div>
+                              {activeFilePath && (
+                                <div className="text-[11px] text-slate-500 font-mono">
+                                  File: {activeFilePath} (v{versionNum})
+                                </div>
+                              )}
                               {doc.remarks && (
                                 <div className="text-[11px] text-rose-900 bg-rose-50 p-2 rounded border border-rose-200">
                                   <strong>Officer Note:</strong> {doc.remarks}
                                 </div>
                               )}
                             </div>
-                            {latestVersion && (
+                            {activeFilePath && (
                               <a
-                                href={`http://localhost:4000/api/v1/documents/stream/${latestVersion.fileName}`}
+                                href={`http://localhost:4000/api/v1/documents/stream/${activeFilePath}`}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="px-3 py-1.5 bg-blue-50 text-blue-800 font-bold rounded-lg border border-blue-200 text-xs"
@@ -793,6 +800,8 @@ export default function StudentApplicationPage() {
                             cleanDocKey(doc.documentType) === cleanDocKey(d.label)
                           );
                           const latestVersion = existingDoc?.versions?.[0];
+                          const activeFilePath = latestVersion?.filePath || existingDoc?.filePath;
+                          const versionNum = latestVersion?.versionNumber || 1;
                           const isVerified = existingDoc?.status === "VERIFIED";
                           const isReuploadReq = existingDoc?.status === "REJECTED_REUPLOAD_REQUIRED";
 
@@ -826,7 +835,7 @@ export default function StudentApplicationPage() {
                                     <span className="px-3 py-1 bg-rose-100 text-rose-900 font-bold text-xs rounded-full border border-rose-300">
                                       ⚠️ Re-upload Requested
                                     </span>
-                                  ) : latestVersion ? (
+                                  ) : activeFilePath ? (
                                     <span className="px-3 py-1 bg-blue-100 text-blue-900 font-bold text-xs rounded-full border border-blue-300">
                                       ⏳ Pending Audit
                                     </span>
@@ -863,11 +872,11 @@ export default function StudentApplicationPage() {
                                 </button>
                               </div>
 
-                              {latestVersion && (
+                              {activeFilePath && (
                                 <div className="text-[11px] text-slate-600 bg-white p-2.5 border rounded-lg flex items-center justify-between">
-                                  <span>Uploaded File: <strong className="font-mono text-slate-900">{latestVersion.fileName}</strong> (v{latestVersion.versionNumber})</span>
+                                  <span>Uploaded File: <strong className="font-mono text-slate-900">{activeFilePath}</strong> (v{versionNum})</span>
                                   <a
-                                    href={`http://localhost:4000/api/v1/documents/stream/${latestVersion.fileName}`}
+                                    href={`http://localhost:4000/api/v1/documents/stream/${activeFilePath}`}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="text-blue-700 font-bold hover:underline"

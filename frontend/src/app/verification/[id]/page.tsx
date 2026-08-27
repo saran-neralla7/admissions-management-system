@@ -281,6 +281,8 @@ export default function VerificationStudentDetailPage() {
                   <div className="space-y-4">
                     {student.documents.map((doc: any) => {
                       const latestVersion = doc.versions?.[0];
+                      const activeFilePath = latestVersion?.filePath || doc.filePath;
+                      const versionNum = latestVersion?.versionNumber || 1;
                       const isVerified = doc.status === "VERIFIED";
                       const isReuploadReq = doc.status === "REJECTED_REUPLOAD_REQUIRED";
 
@@ -303,16 +305,16 @@ export default function VerificationStudentDetailPage() {
                                   {isVerified ? "✅ Verified" : isReuploadReq ? "⚠️ Re-upload Requested" : "⏳ Pending Audit"}
                                 </span>
                               </div>
-                              {latestVersion && (
+                              {activeFilePath && (
                                 <div className="text-[11px] text-slate-500 font-mono mt-0.5">
-                                  File: {latestVersion.fileName} (v{latestVersion.versionNumber})
+                                  File: {activeFilePath} (v{versionNum})
                                 </div>
                               )}
                             </div>
 
-                            {latestVersion && (
+                            {activeFilePath && (
                               <a
-                                href={`http://localhost:4000/api/v1/documents/stream/${latestVersion.fileName}`}
+                                href={`http://localhost:4000/api/v1/documents/stream/${activeFilePath}`}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="px-3.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-bold rounded-lg border border-blue-200 inline-flex items-center gap-1.5"
