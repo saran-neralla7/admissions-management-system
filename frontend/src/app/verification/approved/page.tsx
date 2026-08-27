@@ -1,43 +1,28 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { fetchApi } from "@/lib/api";
 import { ERPStatusChip } from "@/components/ui/ERPStatusChip";
-import { ERPModal } from "@/components/ui/ERPModal";
 import { GVPLogoSpinner } from "@/components/ui/GVPLogoSpinner";
 
-export default function VerificationPage() {
+export default function ApprovedVerificationPage() {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<any | null>(null);
   const [schools, setSchools] = useState<any[]>([]);
   const [selectedSchoolId, setSelectedSchoolId] = useState("");
   const [selectedProgramId, setSelectedProgramId] = useState("");
-  const [students, setStudents] = useState<any[]>([]);
-  const [unmaskedAadhaarMap, setUnmaskedAadhaarMap] = useState<Record<string, string>>({});
+  const [approvedStudents, setApprovedStudents] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-
-  const [modalState, setModalState] = useState<{
-    isOpen: boolean;
-    title: string;
-    message: string;
-    type: "info" | "success" | "warning" | "danger" | "confirm";
-  }>({
-    isOpen: false,
-    title: "",
-    message: "",
-    type: "info",
-  });
 
   useEffect(() => {
     loadUserAndSchools();
   }, []);
 
   useEffect(() => {
-    loadStudents();
+    loadApprovedStudents();
   }, [selectedSchoolId, selectedProgramId]);
 
   const loadUserAndSchools = async () => {
@@ -54,11 +39,11 @@ export default function VerificationPage() {
     }
   };
 
-  const loadStudents = async () => {
+  const loadApprovedStudents = async () => {
     setLoading(true);
     try {
       const queryParams = new URLSearchParams();
-      queryParams.append("status", "PENDING");
+      queryParams.append("status", "APPROVED");
       if (selectedSchoolId) queryParams.append("schoolId", selectedSchoolId);
       if (selectedProgramId) queryParams.append("programId", selectedProgramId);
 
@@ -66,10 +51,10 @@ export default function VerificationPage() {
       const res = await fetchApi(`/students${queryString}`);
 
       if (res.success) {
-        setStudents(res.data);
+        setApprovedStudents(res.data);
       }
     } catch (err: any) {
-      console.error("Failed to load verification roster:", err);
+      console.error("Failed to load approved roster:", err);
     } finally {
       setLoading(false);
     }
@@ -79,33 +64,6 @@ export default function VerificationPage() {
   const availablePrograms = selectedSchoolId
     ? selectedSchoolObj?.programs || []
     : schools.flatMap((s) => s.programs || []);
-
-  const handleUnmaskAadhaar = async (studentDbId: string) => {
-    try {
-      const res = await fetchApi(`/students/${studentDbId}/unmask-aadhaar`, {
-        method: "POST",
-      });
-      if (res.success) {
-        setUnmaskedAadhaarMap((prev) => ({
-          ...prev,
-          [studentDbId]: res.data.unmaskedAadhaar,
-        }));
-        setModalState({
-          isOpen: true,
-          title: "Aadhaar Access Audited",
-          message: `Aadhaar number unmasked for Student ${res.data.studentId}. Recorded in audit log.`,
-          type: "info",
-        });
-      }
-    } catch (err: any) {
-      setModalState({
-        isOpen: true,
-        title: "Access Denied",
-        message: err.message || "Failed to unmask Aadhaar number.",
-        type: "danger",
-      });
-    }
-  };
 
   const handleInspectStudent = (studentDbId: string) => {
     const queryParams = new URLSearchParams();
@@ -130,13 +88,13 @@ export default function VerificationPage() {
             <div className="border-b border-slate-100 pb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 bg-amber-50 text-amber-900 font-bold text-[10px] rounded border border-amber-200">
-                    PENDING WORKSPACE
+                  <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-900 font-bold text-[10px] rounded border border-emerald-200">
+                    APPROVED ARCHIVE
                   </span>
-                  <h2 className="text-xl font-bold text-slate-900">Pending Certificate Verification Workspace</h2>
+                  <h2 className="text-xl font-bold text-slate-900">Approved Applications Roster</h2>
                 </div>
                 <p className="text-xs text-slate-500 mt-1">
-                  Audit pending student applications, inspect uploaded certificate scans, check form responses, and verify credentials.
+                  Students whose certificates have been verified and approved by the Verification Office.
                 </p>
               </div>
 
@@ -184,37 +142,19 @@ export default function VerificationPage() {
                 </div>
 
                 <button
-                  onClick={loadStudents}
+                  onClick={loadApprovedStudents}
                   className="px-3 py-1.5 bg-slate-900 text-white hover:bg-slate-800 text-xs font-bold rounded-lg transition-colors"
                 >
-                  🔄 Refresh Pending Workspace
+                  🔄 Refresh Roster
                 </button>
               </div>
             </div>
 
             {loading ? (
-              <GVPLogoSpinner label="Loading Pending Verification Roster..." />
-            ) : students.length === 0 ? (
-              <div className="p-12 text-center text-xs text-slate-500 border-2 border-dashed rounded-2xl space-y-3 bg-slate-50/50">
-                <div className="text-3xl">🎉</div>
-                <h4 className="text-sm font-bold text-slate-800">No Pending Student Applications Requiring Verification</h4>
-                <p className="text-slate-500">
-                  All submitted certificates have been verified or no new pending submissions match your current filter.
-                </p>
-                <div className="pt-2 flex items-center justify-center gap-3">
-                  <Link
-                    href="/verification/approved"
-                    className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-slate-800 transition-colors"
-                  >
-                    View Approved Applications &rarr;
-                  </Link>
-                  <Link
-                    href="/verification/reupload"
-                    className="px-4 py-2 bg-amber-500 text-white text-xs font-bold rounded-xl hover:bg-amber-600 transition-colors"
-                  >
-                    View Re-upload Requested &rarr;
-                  </Link>
-                </div>
+              <GVPLogoSpinner label="Loading Approved Applications Roster..." />
+            ) : approvedStudents.length === 0 ? (
+              <div className="p-8 text-center text-xs text-slate-400 border-2 border-dashed rounded-xl">
+                No approved student applications found for the selected School / Program filter.
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -224,15 +164,14 @@ export default function VerificationPage() {
                       <th className="p-3.5">Student Login ID</th>
                       <th className="p-3.5">Full Name</th>
                       <th className="p-3.5">Program / School</th>
-                      <th className="p-3.5">Aadhaar (AES-256 Protected)</th>
-                      <th className="p-3.5">Certificates Uploaded</th>
+                      <th className="p-3.5">Aadhaar (Last 4)</th>
+                      <th className="p-3.5">Verified Scans</th>
                       <th className="p-3.5">Workflow Status</th>
-                      <th className="p-3.5 text-right">Verification Action</th>
+                      <th className="p-3.5 text-right">View Application</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs text-slate-800 font-medium">
-                    {students.map((s) => {
-                      const isUnmasked = unmaskedAadhaarMap[s.id];
+                    {approvedStudents.map((s) => {
                       const docsCount = s.documents?.length || 0;
 
                       return (
@@ -248,24 +187,13 @@ export default function VerificationPage() {
                             <div className="text-[10px] text-slate-400">{s.schoolName}</div>
                           </td>
                           <td className="p-3.5">
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-xs">
-                                {isUnmasked ? isUnmasked : s.maskedAadhaar}
-                              </span>
-                              {!isUnmasked && (
-                                <button
-                                  onClick={() => handleUnmaskAadhaar(s.id)}
-                                  className="text-[10px] font-bold text-blue-700 hover:underline"
-                                  title="Unmask Aadhaar (Audited)"
-                                >
-                                  👁️ Unmask
-                                </button>
-                              )}
-                            </div>
+                            <span className="font-mono bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-xs">
+                              {s.maskedAadhaar}
+                            </span>
                           </td>
                           <td className="p-3.5">
-                            <span className="px-2.5 py-1 bg-slate-100 text-slate-700 font-bold text-[11px] rounded-full border">
-                              📁 {docsCount} Scans Uploaded
+                            <span className="px-2.5 py-1 bg-emerald-50 text-emerald-800 font-bold text-[11px] rounded-full border border-emerald-200">
+                              ✅ {docsCount} Verified
                             </span>
                           </td>
                           <td className="p-3.5">
@@ -274,10 +202,9 @@ export default function VerificationPage() {
                           <td className="p-3.5 text-right space-x-2">
                             <button
                               onClick={() => handleInspectStudent(s.id)}
-                              className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] rounded-lg transition-colors inline-flex items-center gap-1.5"
+                              className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-[11px] rounded-lg transition-colors inline-flex items-center gap-1.5"
                             >
-                              <span>🔍 Inspect &amp; Verify</span>
-                              <span>→</span>
+                              <span>👁️ View Profile &amp; Audit</span>
                             </button>
                           </td>
                         </tr>
@@ -290,15 +217,6 @@ export default function VerificationPage() {
           </div>
         </main>
       </div>
-
-      <ERPModal
-        isOpen={modalState.isOpen}
-        title={modalState.title}
-        message={modalState.message}
-        type={modalState.type}
-        confirmText="OK"
-        onConfirm={() => setModalState((prev) => ({ ...prev, isOpen: false }))}
-      />
     </div>
   );
 }
