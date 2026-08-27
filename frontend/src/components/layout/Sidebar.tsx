@@ -47,6 +47,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ userRole }) => {
             ],
           },
           {
+            groupName: "ADMISSIONS OFFICER WORKSPACE",
+            items: [
+              { label: "Pending Final Admissions", href: "/admissions", icon: "🎓" },
+              { label: "Admitted Students Archive", href: "/admissions/approved", icon: "🎉" },
+            ],
+          },
+          {
             groupName: "STUDENT ROSTER",
             items: [
               { label: "Register New Student", href: "/students/create", icon: "➕" },
@@ -71,6 +78,22 @@ export const Sidebar: React.FC<SidebarProps> = ({ userRole }) => {
           {
             groupName: "AUDITS & REPORTS",
             items: [{ label: "Audit Trail & Logs", href: "/audit-logs", icon: "📜" }],
+          },
+        ];
+
+      case "CENTRAL_ADMISSIONS":
+      case "SCHOOL_ADMISSIONS":
+        return [
+          {
+            groupName: "OVERVIEW",
+            items: [{ label: "Dashboard Overview", href: "/dashboard", icon: "📊" }],
+          },
+          {
+            groupName: "ADMISSIONS OFFICER WORKSPACE",
+            items: [
+              { label: "Pending Final Admissions", href: "/admissions", icon: "🎓" },
+              { label: "Admitted Students Archive", href: "/admissions/approved", icon: "🎉" },
+            ],
           },
         ];
 

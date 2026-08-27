@@ -9,15 +9,15 @@ import { ERPModal } from "@/components/ui/ERPModal";
 export default function CreateStudentPage() {
   const [currentUser, setCurrentUser] = useState<any | null>(null);
   const [schools, setSchools] = useState<any[]>([]);
-  const [cycles, setCycles] = useState<any[]>([]);
   const [selectedSchoolId, setSelectedSchoolId] = useState("");
   const [selectedProgramId, setSelectedProgramId] = useState("");
   const [selectedCycleId, setSelectedCycleId] = useState("");
 
   const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
   const [aadhaarNumber, setAadhaarNumber] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
-  const [email, setEmail] = useState("");
+  const [gender, setGender] = useState("MALE");
   const [loading, setLoading] = useState(false);
 
   const [modalState, setModalState] = useState<{
@@ -25,7 +25,6 @@ export default function CreateStudentPage() {
     title: string;
     message: string;
     type: "info" | "success" | "warning" | "danger" | "confirm";
-    credentials?: { studentId: string; email: string; tempPass: string; cycleTitle: string };
   }>({
     isOpen: false,
     title: "",
@@ -34,15 +33,14 @@ export default function CreateStudentPage() {
   });
 
   useEffect(() => {
-    loadUserAndAcademics();
+    loadUserAndSchools();
   }, []);
 
-  const loadUserAndAcademics = async () => {
+  const loadUserAndSchools = async () => {
     try {
-      const [userRes, schoolsRes, cyclesRes] = await Promise.all([
+      const [userRes, schoolsRes] = await Promise.all([
         fetchApi("/auth/me"),
         fetchApi("/academics/schools"),
-        fetchApi("/academics/cycles"),
       ]);
 
       if (userRes.success) setCurrentUser(userRes.data);
@@ -51,13 +49,9 @@ export default function CreateStudentPage() {
         setSchools(schoolsRes.data);
         const firstSchool = schoolsRes.data[0];
         setSelectedSchoolId(firstSchool.id);
-        if (firstSchool.programs?.length > 0) {
+        if (firstSchool.programs && firstSchool.programs.length > 0) {
           setSelectedProgramId(firstSchool.programs[0].id);
         }
-      }
-
-      if (cyclesRes.success) {
-        setCycles(cyclesRes.data);
       }
     } catch (err: any) {
       console.error("Failed to load initial data:", err);
@@ -66,7 +60,9 @@ export default function CreateStudentPage() {
 
   const selectedSchool = schools.find((s) => s.id === selectedSchoolId);
   const availablePrograms = selectedSchool?.programs || [];
-  const availableCyclesForProg = cycles.filter((c) => c.programId === selectedProgramId && c.isActive);
+
+  const selectedProgramObj = availablePrograms.find((p: any) => p.id === selectedProgramId);
+  const availableCyclesForProg = selectedProgramObj?.admissionCycles || [];
 
   useEffect(() => {
     if (availableCyclesForProg.length > 0) {
@@ -74,24 +70,36 @@ export default function CreateStudentPage() {
     } else {
       setSelectedCycleId("");
     }
-  }, [selectedProgramId, cycles]);
+  }, [selectedProgramId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedProgramId || !selectedCycleId) {
+
+    if (!selectedProgramId) {
       setModalState({
         isOpen: true,
-        title: "Academic Cycle Required",
-        message: "Student can ONLY be added if an active Academic Year & Admission Phase (e.g. 2026 Phase 1) is created first.",
+        title: "Validation Error",
+        message: "Please select a target academic program.",
         type: "warning",
       });
       return;
     }
 
-    if (aadhaarNumber.replace(/\D/g, "").length !== 12) {
+    if (!selectedCycleId) {
       setModalState({
         isOpen: true,
-        title: "Invalid Aadhaar Number",
+        title: "Admission Phase Required",
+        message: "No active Admission Phase selected. Please configure an Academic Year Phase under System Management.",
+        type: "warning",
+      });
+      return;
+    }
+
+    const cleanAadhaar = aadhaarNumber.replace(/\D/g, "");
+    if (cleanAadhaar.length !== 12) {
+      setModalState({
+        isOpen: true,
+        title: "Validation Error",
         message: "Aadhaar Number must be exactly 12 digits.",
         type: "warning",
       });
@@ -104,9 +112,10 @@ export default function CreateStudentPage() {
         method: "POST",
         body: JSON.stringify({
           fullName,
-          aadhaarNumber,
-          dateOfBirth,
           email,
+          aadhaarNo: cleanAadhaar,
+          dateOfBirth,
+          gender,
           programId: selectedProgramId,
           admissionCycleId: selectedCycleId,
         }),
@@ -116,20 +125,15 @@ export default function CreateStudentPage() {
         setModalState({
           isOpen: true,
           title: "Student Account Created",
-          message: `Student account created for ${res.data.fullName} under Academic Year ${res.data.academicYear} (${res.data.cycleTitle}). Invitation email sent.`,
+          message: `Student account created for ${res.data.fullName} under ID ${res.data.studentId}. Temporary password: ${res.data.temporaryPassword}. Invitation email sent to ${res.data.email}.`,
           type: "success",
-          credentials: {
-            studentId: res.data.studentId,
-            email: res.data.email,
-            tempPass: res.data.temporaryPassword,
-            cycleTitle: `${res.data.academicYear} ${res.data.cycleTitle}`,
-          },
         });
 
         setFullName("");
         setAadhaarNumber("");
         setDateOfBirth("");
         setEmail("");
+        setGender("MALE");
       }
     } catch (err: any) {
       setModalState({
@@ -154,9 +158,9 @@ export default function CreateStudentPage() {
         <main className="flex-1 p-8 max-w-4xl space-y-6">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 space-y-6">
             <div>
-              <h2 className="text-xl font-bold text-slate-900">Create Student & Dispatch Invitation</h2>
+              <h2 className="text-xl font-bold text-slate-900">Create Student &amp; Dispatch Invitation</h2>
               <p className="text-xs text-slate-500 mt-1">
-                Office User inputs student details, selects active Academic Year & Phase, auto-generates Student ID, encrypts Aadhaar (AES-256), and emails temporary login credentials.
+                Office User inputs student details, selects active Academic Year &amp; Phase, auto-generates Student ID, encrypts Aadhaar (AES-256), and emails temporary login credentials.
               </p>
             </div>
 
@@ -201,10 +205,10 @@ export default function CreateStudentPage() {
                 </div>
               </div>
 
-              {/* Academic Year & Admission Phase Selection (STRICT BINDING) */}
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                <label className="block text-[11px] font-bold uppercase text-slate-700">
-                  📅 Active Academic Year & Admission Phase *
+              {/* Admission Cycle Phase Selector */}
+              <div className="p-4 bg-slate-50 border rounded-xl space-y-2">
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                  📅 Active Academic Year &amp; Admission Phase *
                 </label>
 
                 {availableCyclesForProg.length === 0 ? (
@@ -221,7 +225,7 @@ export default function CreateStudentPage() {
                     className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-xs font-bold bg-white text-slate-900"
                     required
                   >
-                    {availableCyclesForProg.map((c) => (
+                    {availableCyclesForProg.map((c: any) => (
                       <option key={c.id} value={c.id}>
                         Academic Year {c.academicYear} • {c.title}
                       </option>
@@ -256,6 +260,20 @@ export default function CreateStudentPage() {
                 </div>
 
                 <div>
+                  <label className="block text-[11px] font-semibold uppercase text-slate-600 mb-1">Student Gender *</label>
+                  <select
+                    value={gender}
+                    onChange={(e) => setGender(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg text-xs font-semibold bg-white"
+                    required
+                  >
+                    <option value="MALE">Male</option>
+                    <option value="FEMALE">Female</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                </div>
+
+                <div>
                   <label className="block text-[11px] font-semibold uppercase text-slate-600 mb-1">Aadhaar Number (12 Digits) *</label>
                   <input
                     type="text"
@@ -285,7 +303,7 @@ export default function CreateStudentPage() {
                 disabled={loading || availableCyclesForProg.length === 0}
                 className="w-full py-3 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-xs transition-all"
               >
-                {loading ? "Creating Student & Dispatching Invitation..." : "Create Student & Send Invitation Email"}
+                {loading ? "Creating Student & Dispatching Email..." : "Create Student & Send Invitation Email"}
               </button>
             </form>
           </div>
@@ -297,18 +315,9 @@ export default function CreateStudentPage() {
         title={modalState.title}
         message={modalState.message}
         type={modalState.type}
-        confirmText="Done"
+        confirmText="OK"
         onConfirm={() => setModalState((prev) => ({ ...prev, isOpen: false }))}
-      >
-        {modalState.credentials && (
-          <div className="bg-slate-50 border p-4 rounded-lg font-mono text-xs space-y-2 mt-2">
-            <div><span className="text-slate-500">Student ID:</span> <strong className="text-slate-900 font-bold">{modalState.credentials.studentId}</strong></div>
-            <div><span className="text-slate-500">Academic Year & Phase:</span> <strong className="text-blue-800 font-bold">{modalState.credentials.cycleTitle}</strong></div>
-            <div><span className="text-slate-500">Email:</span> {modalState.credentials.email}</div>
-            <div><span className="text-slate-500">Temp Password:</span> <strong className="text-blue-700 bg-blue-50 px-2 py-0.5 rounded">{modalState.credentials.tempPass}</strong></div>
-          </div>
-        )}
-      </ERPModal>
+      />
     </div>
   );
 }
